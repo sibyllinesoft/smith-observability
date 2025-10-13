@@ -1,0 +1,59 @@
+services:
+  bifrost:
+    build:
+      context: ./docker/bifrost
+    ports:
+      - "16080:8080"
+    environment:
+      BIFROST_HOST: 0.0.0.0
+      BIFROST_PORT: 8080
+      BIFROST_LOG_LEVEL: debug
+      BIFROST_LOG_STYLE: json
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - bifrost_data:/srv/bifrost
+      - ./bifrost.config.json:/etc/bifrost/config.json:ro
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.90.1
+    command:
+      - "--config=/etc/otelcol-contrib/otel-collector.yaml"
+    ports:
+      - "13317:4317"
+      - "13318:4318"
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol-contrib/otel-collector.yaml:ro
+    environment:
+      CLICKHOUSE_ENDPOINT: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: otel
+      CLICKHOUSE_USERNAME: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.10
+    ports:
+      - "13123:8123"
+      - "13900:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./observability/clickhouse-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./observability/clickhouse-config/cors.xml:/etc/clickhouse-server/config.d/cors.xml:ro
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  bifrost_data:
+  clickhouse_data:

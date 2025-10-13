@@ -1,0 +1,28 @@
+{
+  "name": "smith-observability",
+  "version": "0.4.0",
+  "description": "Smith observability tooling and Docker stack bootstrapper.",
+  "type": "module",
+  "bin": {
+    "smith": "./bin/smith.mjs"
+  },
+  "files": [
+    "bin",
+    "docker-compose.yaml",
+    "bifrost.config.json",
+    "observability",
+    "README.md",
+    "docker"
+  ],
+  "scripts": {
+    "observe": "node ./bin/smith.mjs observe"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.53.0",
+    "@opentelemetry/resources": "^1.9.0",
+    "@opentelemetry/sdk-trace-base": "^1.9.0",
+    "@opentelemetry/sdk-trace-node": "^1.9.0",
+    "@opentelemetry/semantic-conventions": "^1.12.0"
+  }
+}

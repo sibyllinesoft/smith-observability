@@ -1,0 +1,35 @@
+.env
+.vscode
+.DS_Store
+*_creds*
+**/venv/
+**/__pycache__/**
+private.*
+.venv
+bifrost-data
+
+# Enterprise
+ui/app/enterprise
+ui/components/enterprise
+
+# Temporary directories
+**/temp/
+/transports/ui
+/transports/bifrost-http/lib/ui
+/transports/bifrost-http/ui/
+transports/bifrost-http/logs/
+transports/bifrost-http/tmp/
+node_modules
+/dist
+**/tmp/
+temp*/
+tmp/
+
+# Go workspaces (local only)
+go.work
+go.work.sum
+
+# Sqlite DBs
+*.db
+*.db-shm
+*.db-wal

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://www.getmaxim.ai/schema",
+  "client": {
+    "enable_logging": true,
+    "log_level": "info",
+    "log_output_style": "json",
+    "allow_direct_keys": true,
+    "prometheus_labels": [
+      "smith.project",
+      "smith.environment"
+    ]
+  },
+  "providers": {
+    "openai": {
+      "base_url": "https://api.openai.com",
+      "keys": [
+        {
+          "value": "env.OPENAI_API_KEY",
+          "weight": 1
+        }
+      ],
+      "request_logging": {
+        "enabled": true,
+        "log_headers": true,
+        "log_body": true,
+        "log_path": "/srv/bifrost/logs/openai-requests.jsonl"
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "otel",
+      "enabled": true,
+      "config": {
+        "collector_url": "otel-collector:4317",
+        "trace_type": "otel",
+        "protocol": "grpc"
+      }
+    },
+    {
+      "name": "telemetry",
+      "enabled": true,
+      "config": {
+        "capture_usage_metrics": true,
+        "usage_attributes": true,
+        "custom_labels": [
+          "smith.project",
+          "smith.environment"
+        ]
+      }
+    }
+  ]
+}
