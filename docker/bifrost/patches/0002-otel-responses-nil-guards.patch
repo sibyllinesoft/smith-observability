@@ -1,0 +1,33 @@
+diff --git a/plugins/otel/converter.go b/plugins/otel/converter.go
+index 826ef96..dd76283 100644
+--- a/plugins/otel/converter.go
++++ b/plugins/otel/converter.go
+@@ -510,16 +510,20 @@ func completeResourceSpan(span *ResourceSpan, timestamp time.Time, resp *schemas
+ 					continue
+ 				}
+ 				kvs := []*KeyValue{kvStr("role", string(*message.Role))}
+-				if message.Content.ContentStr != nil && *message.Content.ContentStr != "" {
+-					kvs = append(kvs, kvStr("content", *message.Content.ContentStr))
+-				} else if message.Content.ContentBlocks != nil {
+-					blockText := ""
+-					for _, block := range message.Content.ContentBlocks {
+-						if block.Text != nil {
+-							blockText += *block.Text
++				if message.Content != nil {
++					if message.Content.ContentStr != nil && *message.Content.ContentStr != "" {
++						kvs = append(kvs, kvStr("content", *message.Content.ContentStr))
++					} else if message.Content.ContentBlocks != nil {
++						blockText := ""
++						for _, block := range message.Content.ContentBlocks {
++							if block.Text != nil {
++								blockText += *block.Text
++							}
++						}
++						if blockText != "" {
++							kvs = append(kvs, kvStr("content", blockText))
+ 						}
+ 					}
+-					kvs = append(kvs, kvStr("content", blockText))
+ 				}
+ 				if message.ResponsesReasoning != nil {
+ 					reasoningText := ""

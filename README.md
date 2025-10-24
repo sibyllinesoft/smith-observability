@@ -47,6 +47,16 @@ When a request carries its own `Authorization: Bearer ...` header, Bifrost prefe
 that header; otherwise it falls back to the keys you supplied via environment
 variables.
 
+### Codex defaults
+
+When you launch the Codex agent, the wrapper guarantees Bifrost receives a model
+identifier in `provider/model` form. If you omit `--model` and do not set
+`CODEX_DEFAULT_MODEL`, the CLI injects `openai/gpt-5-codex`. Override the default
+by exporting `CODEX_DEFAULT_MODEL` (for example,
+`CODEX_DEFAULT_MODEL=gpt-4o smith observe codex -- look around`). The effective
+model is logged before the agent starts and is recorded on the `smith.observe`
+span as `smith.agent.model`.
+
 ### What happens when you call `smith observe`
 
 1. `docker compose up -d` runs against the package’s `docker-compose.yaml`. The

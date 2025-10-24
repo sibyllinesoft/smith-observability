@@ -1,0 +1,2791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Repository Analysis: Scribe Analysis</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #3a3a3a;
+            --text-primary: #e5e5e5;
+            --text-secondary: #b5b5b5;
+            --text-muted: #888;
+            --accent-primary: #4f9cf9;
+            --accent-secondary: #7c3aed;
+            --border-color: #404040;
+            --hover-color: #333333;
+            --code-bg: #252525;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+            color: white;
+            padding: 32px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.02) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.01) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        
+        .header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3e%3cg fill='none' fill-rule='evenodd'%3e%3cg fill='%23ffffff' fill-opacity='0.02'%3e%3ccircle cx='20' cy='20' r='1'/%3e%3c/g%3e%3c/g%3e%3c/svg%3e");
+            pointer-events: none;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header .meta {
+            margin-top: 20px;
+            opacity: 0.9;
+            font-size: 13px;
+            position: relative;
+            z-index: 1;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .meta-item:hover {
+            background: rgba(255, 255, 255, 0.12);
+            transform: translateY(-1px);
+        }
+        
+        .stats {
+            background: var(--bg-tertiary);
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 24px;
+        }
+        
+        .stat {
+            text-align: center;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+        }
+        
+        .stat:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+        
+        .toc {
+            background: var(--bg-tertiary);
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .toc h3 {
+            margin: 0 0 20px 0;
+            font-size: 18px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        
+        .file-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+        
+        .file-item {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+        
+        .file-item:hover {
+            background-color: var(--hover-color);
+        }
+        
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        
+        .file-name {
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .file-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        .content {
+            padding: 24px;
+            background: var(--bg-secondary);
+        }
+        
+        .file-section {
+            margin-bottom: 32px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--bg-primary);
+        }
+        
+        .file-header {
+            background: var(--bg-tertiary);
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .file-content {
+            max-height: 600px;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .file-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .file-content::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+        
+        .file-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+        
+        .file-content::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+        
+        pre {
+            margin: 0;
+            padding: 24px;
+            background: var(--code-bg);
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: var(--text-primary);
+        }
+        
+        .icon {
+            width: 16px;
+            height: 16px;
+        }
+        
+        .icon-lg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* React Tree Component Styles */
+        .tree-container {
+            height: 400px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .tree-node {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            cursor: pointer;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+            user-select: none;
+            border-radius: 4px;
+            margin: 1px 0;
+        }
+
+        .tree-node:hover {
+            background: var(--hover-color);
+            color: var(--accent-primary);
+        }
+
+        .tree-node.selected {
+            background: var(--accent-primary);
+            color: white;
+        }
+
+        .tree-node-content {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            width: 100%;
+        }
+
+        .tree-arrow {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 4px;
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+            opacity: 0.6;
+        }
+
+        .tree-arrow.expanded {
+            transform: rotate(90deg);
+        }
+
+        .tree-arrow.hidden {
+            opacity: 0;
+        }
+
+        .tree-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+
+        .tree-label {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+
+        .folder-icon {
+            color: var(--accent-secondary);
+        }
+
+        .file-icon {
+            color: var(--text-secondary);
+        }
+
+        /* Scrollbar styling for tree */
+        .tree-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .tree-container::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+        }
+
+        .tree-container::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        .tree-container::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+            
+            .header .meta {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            
+            .meta-item {
+                justify-content: center;
+            }
+            
+            .stats {
+                grid-template-columns: 1fr;
+                gap: 16px;
+                padding: 16px;
+            }
+            
+            .content {
+                padding: 16px;
+            }
+        }
+        
+        .control-bar {
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .control-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .btn-primary {
+            background: var(--accent-primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #3d8bfd;
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--hover-color);
+            transform: translateY(-1px);
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.online {
+            background: #10b981;
+        }
+        
+        .status-dot.offline {
+            background: #ef4444;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @media (max-width: 768px) {
+            .control-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+                padding: 16px;
+            }
+            
+            .control-buttons {
+                justify-content: center;
+            }
+            
+            .status-indicator {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                🔍 Repository Analysis
+            </h1>
+            <div class="meta">
+                <div class="meta-item">
+                    <span>📊 <strong>Algorithm:</strong> v5-integrated</span>
+                </div>
+                <div class="meta-item">
+                    <span>🕒 <strong>Generated:</strong> 2025-10-23 14:07:49 UTC</span>
+                </div>
+                <div class="meta-item">
+                    <span>⚡ <strong>Selection Time:</strong> 129ms</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="control-bar">
+            <div class="control-buttons">
+                <button id="save-btn" class="btn btn-primary">
+                    💾 Save Bundle
+                </button>
+                <button id="shutdown-btn" class="btn btn-secondary">
+                    🛑 Shutdown Server
+                </button>
+            </div>
+            <div class="status-indicator">
+                <span id="connection-status" class="status-dot online"></span>
+                <span id="status-text">Connected</span>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">
+                    📄 11
+                </div>
+                <div class="stat-label">Files Selected</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">
+                    🔢 17,501
+                </div>
+                <div class="stat-label">Estimated Tokens</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">
+                    💾 65.66 KB
+                </div>
+                <div class="stat-label">Total Size</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">
+                    🎯 110.0%
+                </div>
+                <div class="stat-label">Coverage</div>
+            </div>
+        </div>
+        
+        <div class="toc">
+            <h3>
+                📁 File Explorer
+            </h3>
+            <div id="file-tree-container" class="tree-container"></div>
+        </div>
+        
+        <div class="file-list">
+            <div class="file-item">
+                <span class="file-name">📄 DIRECTORY_MAP.txt</span>
+                <span class="file-meta">2.34 KB • ~715 tokens • Score: 1.00</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 observability/clickhouse-init.sql</span>
+                <span class="file-meta">6.99 KB • ~1,710 tokens • Score: 0.78</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 bin/smith.mjs</span>
+                <span class="file-meta">19.38 KB • ~4,878 tokens • Score: 0.78</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 docker/bifrost/entrypoint.sh</span>
+                <span class="file-meta">1.52 KB • ~513 tokens • Score: 0.60</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 observability/otel-collector.yaml</span>
+                <span class="file-meta">728.00 B • ~160 tokens • Score: 0.53</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 observability/clickhouse-config/cors.xml</span>
+                <span class="file-meta">324.00 B • ~73 tokens • Score: 0.53</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 package-lock.json</span>
+                <span class="file-meta">24.55 KB • ~7,621 tokens • Score: 0.53</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 package.json</span>
+                <span class="file-meta">712.00 B • ~186 tokens • Score: 0.53</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 docker-compose.yaml</span>
+                <span class="file-meta">1.66 KB • ~384 tokens • Score: 0.53</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 bifrost.config.json</span>
+                <span class="file-meta">1.10 KB • ~236 tokens • Score: 0.53</span>
+            </div>
+            <div class="file-item">
+                <span class="file-name">📄 README.md</span>
+                <span class="file-meta">6.35 KB • ~1,025 tokens • Score: 0.27</span>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="file-section" id="file-1">
+                <div class="file-header">📄 DIRECTORY_MAP.txt</div>
+                <div class="file-content">
+                    <pre>Repository Inventory
+&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;
+Path                                                         Type       Size Modified
+------------------------------------------------------------ ---- ---------- -------------------
+.                                                            dir    63.33 KB 2025-10-16 14:48:12
+/                                                            dir     4.10 KB 2025-09-07 18:08:55
+/home                                                        dir     32.00 B 2025-07-05 13:25:42
+/home/nathan                                                 dir     2.26 KB 2025-10-22 20:44:41
+/home/nathan/Projects                                        dir     1.20 KB 2025-10-17 21:11:39
+/home/nathan/Projects/smith-observability                    dir    312.00 B 2025-10-14 07:32:37
+/home/nathan/Projects/smith-observability/README.md          file    6.35 KB 2025-10-13 08:09:46
+/home/nathan/Projects/smith-observability/bifrost.config.json file    1.10 KB 2025-10-13 15:13:46
+/home/nathan/Projects/smith-observability/bin                dir     18.00 B 2025-10-13 17:37:42
+/home/nathan/Projects/smith-observability/bin/smith.mjs      file   19.38 KB 2025-10-16 14:48:12
+/home/nathan/Projects/smith-observability/docker             dir     14.00 B 2025-10-13 08:06:00
+/home/nathan/Projects/smith-observability/docker-compose.yaml file    1.66 KB 2025-10-13 14:00:20
+/home/nathan/Projects/smith-observability/docker/bifrost     dir     60.00 B 2025-10-15 20:55:25
+/home/nathan/Projects/smith-observability/docker/bifrost/entrypoint.sh file    1.52 KB 2025-10-13 14:00:03
+/home/nathan/Projects/smith-observability/observability      dir    110.00 B 2025-10-11 11:21:53
+/home/nathan/Projects/smith-observability/observability/clickhouse-config dir     16.00 B 2025-10-11 09:50:14
+/home/nathan/Projects/smith-observability/observability/clickhouse-config/cors.xml file   324.00 B 2025-10-11 09:50:14
+/home/nathan/Projects/smith-observability/observability/clickhouse-init.sql file    6.99 KB 2025-10-13 13:04:32
+/home/nathan/Projects/smith-observability/observability/otel-collector.yaml file   728.00 B 2025-10-13 08:08:38
+/home/nathan/Projects/smith-observability/package-lock.json  file   24.55 KB 2025-10-12 00:44:05
+/home/nathan/Projects/smith-observability/package.json       file   712.00 B 2025-10-13 08:08:56
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-2">
+                <div class="file-header">📄 observability/clickhouse-init.sql</div>
+                <div class="file-content">
+                    <pre>CREATE DATABASE IF NOT EXISTS otel;
+
+USE otel;
+
+CREATE TABLE IF NOT EXISTS otel_traces (
+    Timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
+    TraceId String CODEC(ZSTD(1)),
+    SpanId String CODEC(ZSTD(1)),
+    ParentSpanId String CODEC(ZSTD(1)),
+    TraceState String CODEC(ZSTD(1)),
+    SpanName LowCardinality(String) CODEC(ZSTD(1)),
+    SpanKind LowCardinality(String) CODEC(ZSTD(1)),
+    ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+    ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ScopeName String CODEC(ZSTD(1)),
+    ScopeVersion String CODEC(ZSTD(1)),
+    SpanAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    Duration UInt64 CODEC(ZSTD(1)),
+    StatusCode LowCardinality(String) CODEC(ZSTD(1)),
+    StatusMessage String CODEC(ZSTD(1)),
+    Events Nested (
+        Timestamp DateTime64(9),
+        Name LowCardinality(String),
+        Attributes Map(LowCardinality(String), String)
+    ) CODEC(ZSTD(1)),
+    Links Nested (
+        TraceId String,
+        SpanId String,
+        TraceState String,
+        Attributes Map(LowCardinality(String), String)
+    ) CODEC(ZSTD(1)),
+    INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
+    INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_span_attr_key mapKeys(SpanAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_span_attr_value mapValues(SpanAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_duration Duration TYPE minmax GRANULARITY 1
+) ENGINE &#x3D; MergeTree()
+PARTITION BY toDate(Timestamp)
+ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
+TTL toDateTime(Timestamp) + toIntervalDay(14)
+SETTINGS index_granularity &#x3D; 8192, ttl_only_drop_parts &#x3D; 1;
+
+CREATE TABLE IF NOT EXISTS otel_traces_trace_id_ts (
+    TraceId String CODEC(ZSTD(1)),
+    Start DateTime CODEC(Delta, ZSTD(1)),
+    End DateTime CODEC(Delta, ZSTD(1)),
+    INDEX idx_trace_id TraceId TYPE bloom_filter(0.01) GRANULARITY 1
+) ENGINE &#x3D; MergeTree()
+PARTITION BY toDate(Start)
+ORDER BY (TraceId, Start)
+TTL toDateTime(End) + toIntervalDay(14)
+SETTINGS index_granularity &#x3D; 8192, ttl_only_drop_parts &#x3D; 1;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS otel_traces_trace_id_ts_mv
+TO otel_traces_trace_id_ts
+AS
+SELECT
+    TraceId,
+    min(Timestamp) AS Start,
+    max(Timestamp) AS End
+FROM otel_traces
+WHERE TraceId !&#x3D; &amp;#39;&amp;#39;
+GROUP BY TraceId;
+
+CREATE OR REPLACE VIEW agent_runs AS
+SELECT
+    TraceId AS trace_id,
+    any(ServiceName) AS service_name,
+    min(Timestamp) AS start_time,
+    max(Timestamp) AS end_time,
+    greatest(
+        round((toUnixTimestamp64Nano(max(Timestamp)) - toUnixTimestamp64Nano(min(Timestamp))) / 1e9, 6),
+        0
+    ) AS duration_seconds,
+    argMax(ResourceAttributes[&amp;#39;smith.git.root&amp;#39;], Timestamp) AS git_root,
+    argMax(ResourceAttributes[&amp;#39;smith.git.branch&amp;#39;], Timestamp) AS git_branch,
+    argMax(ResourceAttributes[&amp;#39;smith.git.remote&amp;#39;], Timestamp) AS git_remote,
+    count() AS span_count,
+    countIf(SpanKind &#x3D; &amp;#39;SPAN_KIND_INTERNAL&amp;#39;) AS internal_span_count,
+    countIf(SpanKind &#x3D; &amp;#39;SPAN_KIND_CLIENT&amp;#39;) AS client_span_count,
+    coalesce(
+        nullIf(argMax(ResourceAttributes[&amp;#39;smith.agent.name&amp;#39;], Timestamp), &amp;#39;&amp;#39;),
+        nullIf(argMax(SpanAttributes[&amp;#39;smith.agent.name&amp;#39;], Timestamp), &amp;#39;&amp;#39;),
+        nullIf(replaceRegexpAll(any(ServiceName), &amp;#39;^smith-agent-&amp;#39;, &amp;#39;&amp;#39;), &amp;#39;&amp;#39;),
+        &amp;#39;&amp;#39;
+    ) AS agent_name,
+    coalesce(
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;llm.usage.prompt_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;llm.usage.input_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;gen_ai.usage.prompt_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;gen_ai.usage.input_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;bifrost.usage.prompt_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.prompt_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.input_tokens&amp;#39;], Timestamp)),
+        0
+    ) AS prompt_tokens,
+    coalesce(
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;llm.usage.completion_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;llm.usage.output_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;gen_ai.usage.completion_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;gen_ai.usage.output_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;bifrost.usage.completion_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.completion_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.output_tokens&amp;#39;], Timestamp)),
+        0
+    ) AS completion_tokens,
+    coalesce(
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;llm.usage.total_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;gen_ai.usage.total_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;bifrost.usage.total_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.total_tokens&amp;#39;], Timestamp)),
+        toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.token_count&amp;#39;], Timestamp)),
+        coalesce(
+            toInt64OrNull(argMax(SpanAttributes[&amp;#39;llm.usage.prompt_tokens&amp;#39;], Timestamp)),
+            toInt64OrNull(argMax(SpanAttributes[&amp;#39;bifrost.usage.prompt_tokens&amp;#39;], Timestamp)),
+            toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.prompt_tokens&amp;#39;], Timestamp)),
+            toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.input_tokens&amp;#39;], Timestamp)),
+            0
+        ) + coalesce(
+            toInt64OrNull(argMax(SpanAttributes[&amp;#39;llm.usage.completion_tokens&amp;#39;], Timestamp)),
+            toInt64OrNull(argMax(SpanAttributes[&amp;#39;bifrost.usage.completion_tokens&amp;#39;], Timestamp)),
+            toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.completion_tokens&amp;#39;], Timestamp)),
+            toInt64OrNull(argMax(SpanAttributes[&amp;#39;usage.output_tokens&amp;#39;], Timestamp)),
+            0
+        )
+    ) AS total_tokens
+FROM otel_traces
+WHERE TraceId !&#x3D; &amp;#39;&amp;#39;
+GROUP BY TraceId;
+
+CREATE OR REPLACE VIEW session_timeline AS
+SELECT
+    git_root,
+    git_branch,
+    git_remote,
+    bucket_start,
+    count() AS run_count,
+    sum(duration_seconds) AS total_run_seconds,
+    min(start_time) AS first_run_started_at,
+    max(end_time) AS last_run_finished_at,
+    groupArrayDistinct(agent_name) AS agents,
+    sum(prompt_tokens) AS total_prompt_tokens,
+    sum(completion_tokens) AS total_completion_tokens,
+    sum(total_tokens) AS total_tokens
+FROM
+(
+    SELECT
+        trace_id,
+        git_root,
+        git_branch,
+        git_remote,
+        toStartOfInterval(start_time, INTERVAL 1 HOUR) AS bucket_start,
+        start_time,
+        end_time,
+        duration_seconds,
+        agent_name,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens
+    FROM agent_runs
+) runs
+GROUP BY
+    git_root,
+    git_branch,
+    git_remote,
+    bucket_start;
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-3">
+                <div class="file-header">📄 bin/smith.mjs</div>
+                <div class="file-content">
+                    <pre>#!/usr/bin/env node
+import { spawn, spawnSync } from &amp;#39;node:child_process&amp;#39;;
+import { readFileSync } from &amp;#39;node:fs&amp;#39;;
+import { setTimeout as delay } from &amp;#39;node:timers/promises&amp;#39;;
+import { fileURLToPath } from &amp;#39;node:url&amp;#39;;
+import path from &amp;#39;node:path&amp;#39;;
+import process from &amp;#39;node:process&amp;#39;;
+
+import {
+  diag,
+  DiagConsoleLogger,
+  DiagLogLevel,
+  SpanStatusCode,
+  trace
+} from &amp;#39;@opentelemetry/api&amp;#39;;
+import { Resource } from &amp;#39;@opentelemetry/resources&amp;#39;;
+import { BatchSpanProcessor } from &amp;#39;@opentelemetry/sdk-trace-base&amp;#39;;
+import { NodeTracerProvider } from &amp;#39;@opentelemetry/sdk-trace-node&amp;#39;;
+import { OTLPTraceExporter } from &amp;#39;@opentelemetry/exporter-trace-otlp-http&amp;#39;;
+
+const OBSERVE_COMMAND &#x3D; &amp;#39;observe&amp;#39;;
+const COMPOSE_PROJECT_NAME &#x3D; &amp;#39;smith-observability&amp;#39;;
+const DEFAULT_OTEL_HTTP_ENDPOINT &#x3D; &amp;#39;http://localhost:13318&amp;#39;;
+const DEFAULT_OTEL_HTTP_TRACES_ENDPOINT &#x3D; &#x60;${DEFAULT_OTEL_HTTP_ENDPOINT}/v1/traces&#x60;;
+const DEFAULT_OTEL_GRPC_ENDPOINT &#x3D; &amp;#39;localhost:13317&amp;#39;;
+const DEFAULT_BIFROST_URL &#x3D; &amp;#39;http://127.0.0.1:16080&amp;#39;;
+const HEALTH_CHECK_TIMEOUT_MS &#x3D; 15000;
+const HEALTH_CHECK_INTERVAL_MS &#x3D; 500;
+const DEFAULT_CODEX_MODEL &#x3D; process.env.CODEX_DEFAULT_MODEL;
+const CODEX_PROVIDER_KEY &#x3D; &amp;#39;openai-responses&amp;#39;;
+const BIFROST_HEALTH_PATH &#x3D; &amp;#39;/healthz&amp;#39;;
+const CLICKHOUSE_SCHEMA_PATH &#x3D; &amp;#39;/docker-entrypoint-initdb.d/00-init.sql&amp;#39;;
+
+async function main() {
+  const [command, ...rawArgs] &#x3D; process.argv.slice(2);
+
+  if (!command || command &#x3D;&#x3D;&#x3D; &amp;#39;--help&amp;#39; || command &#x3D;&#x3D;&#x3D; &amp;#39;-h&amp;#39;) {
+    printUsage();
+    process.exit(command ? 0 : 1);
+  }
+
+  if (command !&#x3D;&#x3D; OBSERVE_COMMAND) {
+    console.error(&#x60;Unknown command &amp;quot;${command}&amp;quot;.&#x60;);
+    printUsage();
+    process.exit(1);
+  }
+
+  const [agent, ...rest] &#x3D; rawArgs;
+  if (!agent) {
+    console.error(&amp;#39;Missing agent name.\n&amp;#39;);
+    printUsage();
+    process.exit(1);
+  }
+
+  const packageRoot &#x3D; path.resolve(path.dirname(fileURLToPath(import.meta.url)), &amp;#39;..&amp;#39;);
+  await ensureObservabilityStack(packageRoot);
+
+  const agentArgs &#x3D; rest[0] &#x3D;&#x3D;&#x3D; &amp;#39;--&amp;#39; ? rest.slice(1) : rest;
+  const { env: baseEnv, resourceAttributes } &#x3D; await buildAgentConfiguration(agent);
+  await waitForBifrost(baseEnv.SMITH_BIFROST_URL);
+  const { env: finalEnv, args: finalArgs } &#x3D; configureAgent(agent, agentArgs, baseEnv);
+  const tracing &#x3D; initializeTracing(resourceAttributes, finalEnv);
+
+  await runAgent(agent, finalArgs, finalEnv, tracing, resourceAttributes);
+}
+
+function printUsage() {
+  console.log(&#x60;
+Usage: smith observe &amp;lt;agent&amp;gt; [-- &amp;lt;agent args&amp;gt;]
+
+Starts (or reuses) the Smith observability stack, wires OTEL environment
+variables, and launches the specified agent binary.
+&#x60;.trim());
+}
+
+async function ensureObservabilityStack(packageRoot) {
+  const composeFile &#x3D; path.join(packageRoot, &amp;#39;docker-compose.yaml&amp;#39;);
+  const dockerCmd &#x3D; resolveDockerComposeCommand();
+
+  console.log(&amp;#39;[smith] Ensuring observability stack is running…&amp;#39;);
+  const args &#x3D; [
+    ...dockerCmd.args,
+    &amp;#39;-f&amp;#39;,
+    composeFile,
+    &amp;#39;-p&amp;#39;,
+    COMPOSE_PROJECT_NAME,
+    &amp;#39;up&amp;#39;,
+    &amp;#39;-d&amp;#39;,
+    &amp;#39;--remove-orphans&amp;#39;
+  ];
+
+  try {
+    await runCommand(dockerCmd.command, args);
+  } catch (error) {
+    if (error?.message?.includes(&amp;#39;Conflict&amp;#39;)) {
+      console.error(
+        &amp;#39;[smith] Docker reported a name conflict. Remove old containers via &amp;#39; +
+          &#x60;&amp;quot;${dockerCmd.command} ${dockerCmd.args.join(&amp;#39; &amp;#39;)} -p ${COMPOSE_PROJECT_NAME} &#x60; +
+          &#x60;-f ${composeFile} down&amp;quot; or delete the conflicting container manually.&#x60;
+      );
+    }
+    throw error;
+  }
+
+  await waitForCollector();
+  await ensureClickhouseSchema(dockerCmd, composeFile);
+}
+
+async function waitForCollector() {
+  const deadline &#x3D; Date.now() + HEALTH_CHECK_TIMEOUT_MS;
+
+  while (Date.now() &amp;lt; deadline) {
+    try {
+      const controller &#x3D; new AbortController();
+      const timeout &#x3D; setTimeout(() &#x3D;&amp;gt; controller.abort(), 2000);
+      const response &#x3D; await fetch(DEFAULT_OTEL_HTTP_ENDPOINT, {
+        method: &amp;#39;GET&amp;#39;,
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (response.ok || response.status &#x3D;&#x3D;&#x3D; 404 || response.status &#x3D;&#x3D;&#x3D; 405) {
+        return;
+      }
+    } catch (error) {
+      // ignore — retry until timeout
+    }
+
+    try {
+      await delay(HEALTH_CHECK_INTERVAL_MS);
+    } catch {
+      return;
+    }
+  }
+
+  console.warn(&amp;#39;[smith] Timed out waiting for the OTEL collector to respond on port 13318.&amp;#39;);
+}
+
+async function ensureClickhouseSchema(dockerCmd, composeFile) {
+  const args &#x3D; [
+    ...dockerCmd.args,
+    &amp;#39;-f&amp;#39;,
+    composeFile,
+    &amp;#39;-p&amp;#39;,
+    COMPOSE_PROJECT_NAME,
+    &amp;#39;exec&amp;#39;,
+    &amp;#39;-T&amp;#39;,
+    &amp;#39;clickhouse&amp;#39;,
+    &amp;#39;bash&amp;#39;,
+    &amp;#39;-lc&amp;#39;,
+    &#x60;clickhouse-client --multiquery &amp;lt; ${CLICKHOUSE_SCHEMA_PATH}&#x60;
+  ];
+
+  try {
+    await runCommand(dockerCmd.command, args);
+  } catch (error) {
+    console.warn(&amp;#39;[smith] Failed to refresh ClickHouse schema:&amp;#39;, error?.message ?? error);
+  }
+}
+
+async function waitForBifrost(rawGatewayUrl) {
+  const baseUrl &#x3D; normaliseBaseUrl(rawGatewayUrl) ?? DEFAULT_BIFROST_URL;
+  let healthUrl;
+
+  try {
+    const parsed &#x3D; new URL(baseUrl);
+    const trimmedPath &#x3D; parsed.pathname.replace(/\/+$/, &amp;#39;&amp;#39;);
+    parsed.pathname &#x3D; &#x60;${trimmedPath}${BIFROST_HEALTH_PATH}&#x60;.replace(/\/{2,}/g, &amp;#39;/&amp;#39;);
+    parsed.search &#x3D; &amp;#39;&amp;#39;;
+    parsed.hash &#x3D; &amp;#39;&amp;#39;;
+    healthUrl &#x3D; parsed.toString();
+  } catch {
+    healthUrl &#x3D; &#x60;${DEFAULT_BIFROST_URL}${BIFROST_HEALTH_PATH}&#x60;;
+  }
+
+  const deadline &#x3D; Date.now() + HEALTH_CHECK_TIMEOUT_MS;
+
+  while (Date.now() &amp;lt; deadline) {
+    try {
+      const controller &#x3D; new AbortController();
+      const timeout &#x3D; setTimeout(() &#x3D;&amp;gt; controller.abort(), 2000);
+      const response &#x3D; await fetch(healthUrl, {
+        method: &amp;#39;GET&amp;#39;,
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (response.ok || response.status &#x3D;&#x3D;&#x3D; 404) {
+        return;
+      }
+    } catch {
+      // ignore — retry until timeout
+    }
+
+    try {
+      await delay(HEALTH_CHECK_INTERVAL_MS);
+    } catch {
+      return;
+    }
+  }
+
+  console.warn(&#x60;[smith] Timed out waiting for Bifrost to respond on ${healthUrl}.&#x60;);
+}
+
+function resolveDockerComposeCommand() {
+  const docker &#x3D; spawnSync(&amp;#39;docker&amp;#39;, [&amp;#39;compose&amp;#39;, &amp;#39;version&amp;#39;]);
+  if (docker.status &#x3D;&#x3D;&#x3D; 0) {
+    return { command: &amp;#39;docker&amp;#39;, args: [&amp;#39;compose&amp;#39;] };
+  }
+
+  const legacy &#x3D; spawnSync(&amp;#39;docker-compose&amp;#39;, [&amp;#39;version&amp;#39;]);
+  if (legacy.status &#x3D;&#x3D;&#x3D; 0) {
+    return { command: &amp;#39;docker-compose&amp;#39;, args: [] };
+  }
+
+  console.error(&amp;#39;Neither &amp;quot;docker compose&amp;quot; nor &amp;quot;docker-compose&amp;quot; is available on PATH.&amp;#39;);
+  process.exit(1);
+}
+
+async function runCommand(command, args, options &#x3D; {}) {
+  const child &#x3D; spawn(command, args, {
+    stdio: &amp;#39;inherit&amp;#39;,
+    ...options
+  });
+
+  await new Promise((resolve, reject) &#x3D;&amp;gt; {
+    child.on(&amp;#39;exit&amp;#39;, code &#x3D;&amp;gt; {
+      if (code &#x3D;&#x3D;&#x3D; 0) resolve();
+      else reject(new Error(&#x60;Command &amp;quot;${command} ${args.join(&amp;#39; &amp;#39;)}&amp;quot; exited with code ${code}&#x60;));
+    });
+    child.on(&amp;#39;error&amp;#39;, reject);
+  });
+}
+
+async function buildAgentConfiguration(agentName) {
+  const env &#x3D; { ...process.env };
+  const resourceAttributes &#x3D; parseResourceAttributes(env.OTEL_RESOURCE_ATTRIBUTES);
+  const defaultServiceName &#x3D; &#x60;smith-agent-${agentName}&#x60;;
+
+  if (!resourceAttributes[&amp;#39;service.name&amp;#39;]) {
+    resourceAttributes[&amp;#39;service.name&amp;#39;] &#x3D; defaultServiceName;
+  }
+  resourceAttributes[&amp;#39;smith.agent.name&amp;#39;] &#x3D; agentName;
+
+  const gitMetadata &#x3D; detectGitMetadata();
+  Object.assign(resourceAttributes, gitMetadata);
+
+  if (env.SMITH_OBSERVABILITY_KEEP_OTEL &#x3D;&#x3D;&#x3D; &amp;#39;1&amp;#39;) {
+    // honour caller-provided OTEL variables
+  } else {
+    env.OTEL_EXPORTER_OTLP_ENDPOINT &#x3D; DEFAULT_OTEL_GRPC_ENDPOINT;
+    env.OTEL_EXPORTER_OTLP_PROTOCOL &#x3D; &amp;#39;grpc&amp;#39;;
+    env.OTEL_EXPORTER_OTLP_INSECURE &#x3D; &amp;#39;true&amp;#39;;
+
+    env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT &#x3D; DEFAULT_OTEL_HTTP_TRACES_ENDPOINT;
+    env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL &#x3D; &amp;#39;http/protobuf&amp;#39;;
+    env.OTEL_EXPORTER_OTLP_TRACES_INSECURE &#x3D; &amp;#39;true&amp;#39;;
+  }
+
+  const providedGateway &#x3D;
+    normaliseBaseUrl(env.SMITH_BIFROST_URL) ?? normaliseBaseUrl(env.BIFROST_GATEWAY_URL);
+  env.BIFROST_GATEWAY_URL &#x3D; providedGateway ?? DEFAULT_BIFROST_URL;
+  env.SMITH_BIFROST_URL &#x3D; env.BIFROST_GATEWAY_URL;
+  resourceAttributes[&amp;#39;smith.bifrost.gateway_url&amp;#39;] &#x3D; env.BIFROST_GATEWAY_URL;
+
+  env.OTEL_RESOURCE_ATTRIBUTES &#x3D; serialiseResourceAttributes(resourceAttributes);
+  env.OTEL_SERVICE_NAME &#x3D; resourceAttributes[&amp;#39;service.name&amp;#39;];
+  env.SMITH_OBSERVABILITY_ENABLED &#x3D; &amp;#39;1&amp;#39;;
+
+  return { env, resourceAttributes };
+}
+
+function initializeTracing(resourceAttributes, env) {
+  if (globalThis.__SMITH_TRACING) {
+    return globalThis.__SMITH_TRACING;
+  }
+
+  try {
+    diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ERROR);
+
+    const resource &#x3D; Resource.default().merge(new Resource(resourceAttributes));
+    const exporter &#x3D; new OTLPTraceExporter({
+      url: env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? DEFAULT_OTEL_HTTP_TRACES_ENDPOINT
+    });
+
+    const provider &#x3D; new NodeTracerProvider({ resource });
+    provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+    provider.register();
+
+    const tracer &#x3D; trace.getTracer(&amp;#39;smith-observability-cli&amp;#39;);
+    const tracing &#x3D; { tracer, provider };
+    globalThis.__SMITH_TRACING &#x3D; tracing;
+    return tracing;
+  } catch (error) {
+    console.warn(&amp;#39;[smith] Failed to initialise local tracing:&amp;#39;, error?.message ?? error);
+    return null;
+  }
+}
+
+async function runAgent(agent, args, env, tracing, resourceAttributes) {
+  console.log(&#x60;[smith] Launching agent &amp;quot;${agent}&amp;quot;…&#x60;);
+
+  const span &#x3D; tracing?.tracer?.startSpan(&amp;#39;smith.observe&amp;#39;, {
+    attributes: buildSpanAttributes(agent, args, resourceAttributes)
+  });
+  span?.addEvent(&amp;#39;agent.start&amp;#39;, {
+    &amp;#39;smith.agent.command&amp;#39;: agent,
+    &amp;#39;smith.agent.args&amp;#39;: args.join(&amp;#39; &amp;#39;)
+  });
+
+  const child &#x3D; spawn(agent, args, {
+    stdio: &amp;#39;inherit&amp;#39;,
+    env
+  });
+
+  let exitCode;
+  let capturedError &#x3D; null;
+
+  try {
+    await new Promise((resolve, reject) &#x3D;&amp;gt; {
+      child.on(&amp;#39;exit&amp;#39;, code &#x3D;&amp;gt; {
+        exitCode &#x3D; code;
+        if (code &#x3D;&#x3D;&#x3D; 0) resolve();
+        else reject(new Error(&#x60;Agent &amp;quot;${agent}&amp;quot; exited with code ${code}&#x60;));
+      });
+      child.on(&amp;#39;error&amp;#39;, reject);
+    });
+  } catch (error) {
+    capturedError &#x3D; error;
+    throw error;
+  } finally {
+    if (span) {
+      if (typeof exitCode &#x3D;&#x3D;&#x3D; &amp;#39;number&amp;#39;) {
+        span.setAttribute(&amp;#39;process.exit_code&amp;#39;, exitCode);
+      }
+      if (capturedError) {
+        span.recordException(capturedError);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: capturedError.message });
+      } else {
+        span.setStatus({ code: SpanStatusCode.OK });
+      }
+      span.addEvent(&amp;#39;agent.end&amp;#39;, {
+        &amp;#39;process.exit_code&amp;#39;: exitCode ?? &amp;#39;unknown&amp;#39;
+      });
+      span.end();
+    }
+
+    await safeForceFlush(tracing?.provider);
+  }
+}
+
+async function safeForceFlush(provider) {
+  if (!provider) return;
+  try {
+    await provider.forceFlush();
+  } catch (error) {
+    console.warn(&amp;#39;[smith] Failed to flush spans:&amp;#39;, error?.message ?? error);
+  }
+}
+
+function parseResourceAttributes(raw) {
+  const attributes &#x3D; {};
+  if (!raw) return attributes;
+
+  for (const segment of raw.split(&amp;#39;,&amp;#39;)) {
+    const [key, value] &#x3D; segment.split(&amp;#39;&#x3D;&amp;#39;);
+    if (!key || value &#x3D;&#x3D;&#x3D; undefined) continue;
+    const trimmedKey &#x3D; key.trim();
+    const trimmedValue &#x3D; value.trim();
+    if (!trimmedKey || !trimmedValue) continue;
+    attributes[trimmedKey] &#x3D; trimmedValue;
+  }
+  return attributes;
+}
+
+function serialiseResourceAttributes(map) {
+  return Object.entries(map)
+    .filter(([, value]) &#x3D;&amp;gt; value !&#x3D;&#x3D; undefined &amp;amp;&amp;amp; value !&#x3D;&#x3D; null &amp;amp;&amp;amp; &#x60;${value}&#x60;.length &amp;gt; 0)
+    .map(([key, value]) &#x3D;&amp;gt; &#x60;${key}&#x3D;${value}&#x60;)
+    .join(&amp;#39;,&amp;#39;);
+}
+
+function detectGitMetadata() {
+  const metadata &#x3D; {};
+  const cwd &#x3D; process.cwd();
+
+  const topLevel &#x3D; spawnSync(&amp;#39;git&amp;#39;, [&amp;#39;rev-parse&amp;#39;, &amp;#39;--show-toplevel&amp;#39;], {
+    cwd,
+    encoding: &amp;#39;utf8&amp;#39;
+  });
+  if (topLevel.status !&#x3D;&#x3D; 0) {
+    return metadata;
+  }
+
+  const root &#x3D; topLevel.stdout.trim();
+  if (!root) return metadata;
+
+  metadata[&amp;#39;smith.git.root&amp;#39;] &#x3D; escapeAttributeValue(root);
+
+  const remote &#x3D; spawnSync(&amp;#39;git&amp;#39;, [&amp;#39;config&amp;#39;, &amp;#39;--get&amp;#39;, &amp;#39;remote.origin.url&amp;#39;], {
+    cwd,
+    encoding: &amp;#39;utf8&amp;#39;
+  });
+  if (remote.status &#x3D;&#x3D;&#x3D; 0) {
+    const repoUrl &#x3D; remote.stdout.trim();
+    if (repoUrl) {
+      metadata[&amp;#39;smith.git.remote&amp;#39;] &#x3D; escapeAttributeValue(repoUrl);
+    }
+  }
+
+  const branch &#x3D; spawnSync(&amp;#39;git&amp;#39;, [&amp;#39;rev-parse&amp;#39;, &amp;#39;--abbrev-ref&amp;#39;, &amp;#39;HEAD&amp;#39;], {
+    cwd,
+    encoding: &amp;#39;utf8&amp;#39;
+  });
+  if (branch.status &#x3D;&#x3D;&#x3D; 0) {
+    const name &#x3D; branch.stdout.trim();
+    if (name) {
+      metadata[&amp;#39;smith.git.branch&amp;#39;] &#x3D; escapeAttributeValue(name);
+    }
+  }
+
+  metadata[&amp;#39;smith.git.status_dirty&amp;#39;] &#x3D; isGitDirty(cwd) ? &amp;#39;true&amp;#39; : &amp;#39;false&amp;#39;;
+
+  return metadata;
+}
+
+function escapeAttributeValue(value) {
+  return value.replace(/,/g, &amp;#39;\\,&amp;#39;);
+}
+
+function isGitDirty(cwd) {
+  const status &#x3D; spawnSync(&amp;#39;git&amp;#39;, [&amp;#39;status&amp;#39;, &amp;#39;--porcelain&amp;#39;], {
+    cwd,
+    encoding: &amp;#39;utf8&amp;#39;
+  });
+  if (status.status !&#x3D;&#x3D; 0) {
+    return false;
+  }
+  return status.stdout.trim().length &amp;gt; 0;
+}
+
+function configureAgent(agentName, args, env) {
+  const normalized &#x3D; agentName.toLowerCase();
+  if (normalized &#x3D;&#x3D;&#x3D; &amp;#39;codex&amp;#39;) {
+    return configureCodexAgent(args, env);
+  }
+  if (normalized.startsWith(&amp;#39;claude&amp;#39;)) {
+    return configureClaudeAgent(args, env);
+  }
+  return { args, env };
+}
+
+function configureCodexAgent(originalArgs, env) {
+  const nextEnv &#x3D; { ...env };
+  const gatewayUrl &#x3D; resolveGatewayUrl(nextEnv);
+  const openAiBaseUrl &#x3D; resolveOpenAiBaseUrl(nextEnv, gatewayUrl);
+
+  if (!nextEnv.OPENAI_API_KEY) {
+    const discovered &#x3D; resolveOpenAiKeyFromProfile();
+    if (discovered) {
+      nextEnv.OPENAI_API_KEY &#x3D; discovered;
+    }
+  }
+
+  if (!nextEnv.OPENAI_BASE_URL) {
+    nextEnv.OPENAI_BASE_URL &#x3D; openAiBaseUrl;
+  }
+  if (!nextEnv.OPENAI_API_BASE) {
+    nextEnv.OPENAI_API_BASE &#x3D; openAiBaseUrl;
+  }
+  if (!nextEnv.CODEX_BASE_URL) {
+    nextEnv.CODEX_BASE_URL &#x3D; openAiBaseUrl;
+  }
+
+  const transformedArgs &#x3D; transformCodexArgs(originalArgs, openAiBaseUrl);
+  return {
+    args: transformedArgs,
+    env: nextEnv
+  };
+}
+
+function configureClaudeAgent(originalArgs, env) {
+  const nextEnv &#x3D; { ...env };
+  const gatewayUrl &#x3D; resolveGatewayUrl(nextEnv);
+  const anthropicBaseUrl &#x3D; resolveAnthropicBaseUrl(nextEnv, gatewayUrl);
+
+  if (!nextEnv.CLAUDE_CODE_GATEWAY_URL) {
+    nextEnv.CLAUDE_CODE_GATEWAY_URL &#x3D; gatewayUrl;
+  }
+  if (!nextEnv.ANTHROPIC_API_URL) {
+    nextEnv.ANTHROPIC_API_URL &#x3D; anthropicBaseUrl;
+  }
+  if (!nextEnv.ANTHROPIC_BASE_URL) {
+    nextEnv.ANTHROPIC_BASE_URL &#x3D; anthropicBaseUrl;
+  }
+
+  return {
+    args: originalArgs,
+    env: nextEnv
+  };
+}
+
+function transformCodexArgs(originalArgs, openAiBaseUrl) {
+  const args &#x3D; [...originalArgs];
+  let hasModelArgument &#x3D; false;
+  let hasModelProviderOverride &#x3D; false;
+  let hasProviderConfigOverride &#x3D; false;
+  const result &#x3D; [];
+
+  for (let index &#x3D; 0; index &amp;lt; args.length; index +&#x3D; 1) {
+    const arg &#x3D; args[index];
+    if (typeof arg !&#x3D;&#x3D; &amp;#39;string&amp;#39;) {
+      result.push(arg);
+      continue;
+    }
+
+    if (arg &#x3D;&#x3D;&#x3D; &amp;#39;--model&amp;#39; || arg &#x3D;&#x3D;&#x3D; &amp;#39;-m&amp;#39;) {
+      const next &#x3D; args[index + 1];
+      if (typeof next &#x3D;&#x3D;&#x3D; &amp;#39;string&amp;#39;) {
+        result.push(arg, prefixModel(next));
+        hasModelArgument &#x3D; true;
+        index +&#x3D; 1;
+        continue;
+      }
+      result.push(arg);
+      continue;
+    }
+
+    if (arg.startsWith(&amp;#39;--model&#x3D;&amp;#39;)) {
+      const [, value] &#x3D; arg.split(&amp;#39;&#x3D;&amp;#39;, 2);
+      result.push(&#x60;--model&#x3D;${prefixModel(value ?? &amp;#39;&amp;#39;)}&#x60;);
+      hasModelArgument &#x3D; true;
+      continue;
+    }
+
+    if (arg.startsWith(&amp;#39;-m&#x3D;&amp;#39;)) {
+      const [, value] &#x3D; arg.split(&amp;#39;&#x3D;&amp;#39;, 2);
+      result.push(&#x60;-m&#x3D;${prefixModel(value ?? &amp;#39;&amp;#39;)}&#x60;);
+      hasModelArgument &#x3D; true;
+      continue;
+    }
+
+    if ((arg &#x3D;&#x3D;&#x3D; &amp;#39;--config&amp;#39; || arg &#x3D;&#x3D;&#x3D; &amp;#39;-c&amp;#39;) &amp;amp;&amp;amp; typeof args[index + 1] &#x3D;&#x3D;&#x3D; &amp;#39;string&amp;#39;) {
+      const next &#x3D; args[index + 1];
+      if (next.includes(&amp;#39;model_provider&#x3D;&amp;#39;)) {
+        hasModelProviderOverride &#x3D; true;
+      }
+      if (next.includes(&#x60;model_providers.${CODEX_PROVIDER_KEY}&#x60;)) {
+        hasProviderConfigOverride &#x3D; true;
+      }
+      result.push(arg);
+      continue;
+    }
+
+    if (arg.startsWith(&amp;#39;--config&#x3D;&amp;#39;) || arg.startsWith(&amp;#39;-c&#x3D;&amp;#39;)) {
+      if (arg.includes(&amp;#39;model_provider&#x3D;&amp;#39;)) {
+        hasModelProviderOverride &#x3D; true;
+      }
+      if (arg.includes(&#x60;model_providers.${CODEX_PROVIDER_KEY}&#x60;)) {
+        hasProviderConfigOverride &#x3D; true;
+      }
+      result.push(arg);
+      continue;
+    }
+
+    if (arg.includes(&amp;#39;model_provider&#x3D;&amp;#39;)) {
+      hasModelProviderOverride &#x3D; true;
+    }
+    if (arg.includes(&#x60;model_providers.${CODEX_PROVIDER_KEY}&#x60;)) {
+      hasProviderConfigOverride &#x3D; true;
+    }
+
+    result.push(arg);
+  }
+
+  if (!hasModelArgument &amp;amp;&amp;amp; DEFAULT_CODEX_MODEL) {
+    result.push(&amp;#39;--model&amp;#39;, prefixModel(DEFAULT_CODEX_MODEL));
+  }
+
+  if (!hasModelProviderOverride) {
+    result.push(&amp;#39;--config&amp;#39;, &#x60;model_provider&#x3D;&amp;quot;${CODEX_PROVIDER_KEY}&amp;quot;&#x60;);
+  }
+  if (!hasProviderConfigOverride) {
+    const providerConfig &#x3D; &#x60;model_providers.${CODEX_PROVIDER_KEY}&#x3D;{name&#x3D;&amp;quot;OpenAI Responses&amp;quot;,base_url&#x3D;&amp;quot;${openAiBaseUrl}&amp;quot;,env_key&#x3D;&amp;quot;OPENAI_API_KEY&amp;quot;,wire_api&#x3D;&amp;quot;responses&amp;quot;}&#x60;;
+    result.push(&amp;#39;--config&amp;#39;, providerConfig);
+  }
+
+  return result;
+}
+
+function resolveGatewayUrl(env) {
+  return (
+    normaliseBaseUrl(
+      env.SMITH_BIFROST_URL ??
+        env.BIFROST_GATEWAY_URL ??
+        DEFAULT_BIFROST_URL
+    ) ?? DEFAULT_BIFROST_URL
+  );
+}
+
+function resolveOpenAiBaseUrl(env, gatewayUrl) {
+  const explicit &#x3D;
+    normaliseBaseUrl(env.OPENAI_BASE_URL) ??
+    normaliseBaseUrl(env.OPENAI_API_BASE) ??
+    normaliseBaseUrl(env.CODEX_BASE_URL);
+  if (explicit) {
+    return explicit.toLowerCase().endsWith(&amp;#39;/v1&amp;#39;)
+      ? explicit
+      : &#x60;${explicit}/v1&#x60;;
+  }
+  const base &#x3D; normaliseBaseUrl(gatewayUrl) ?? DEFAULT_BIFROST_URL;
+  return &#x60;${base}/v1&#x60;;
+}
+
+function resolveAnthropicBaseUrl(env, gatewayUrl) {
+  const explicit &#x3D;
+    normaliseBaseUrl(env.ANTHROPIC_API_URL) ??
+    normaliseBaseUrl(env.ANTHROPIC_BASE_URL);
+  if (explicit) {
+    return explicit.toLowerCase().endsWith(&amp;#39;/anthropic&amp;#39;)
+      ? explicit
+      : &#x60;${explicit}/anthropic&#x60;;
+  }
+  const base &#x3D; normaliseBaseUrl(gatewayUrl) ?? DEFAULT_BIFROST_URL;
+  return &#x60;${base}/anthropic&#x60;;
+}
+
+function normaliseBaseUrl(value) {
+  if (typeof value !&#x3D;&#x3D; &amp;#39;string&amp;#39;) return undefined;
+  const trimmed &#x3D; value.trim();
+  if (trimmed.length &#x3D;&#x3D;&#x3D; 0) return undefined;
+  return trimmed.replace(/\/+$/, &amp;#39;&amp;#39;);
+}
+
+function prefixModel(model) {
+  if (typeof model !&#x3D;&#x3D; &amp;#39;string&amp;#39; || model.trim().length &#x3D;&#x3D;&#x3D; 0) {
+    return model;
+  }
+  if (model.includes(&amp;#39;/&amp;#39;)) {
+    return model;
+  }
+  return &#x60;openai/${model}&#x60;;
+}
+
+function resolveOpenAiKeyFromProfile() {
+  const envKey &#x3D; process.env.OPENAI_API_KEY;
+  if (typeof envKey &#x3D;&#x3D;&#x3D; &amp;#39;string&amp;#39; &amp;amp;&amp;amp; envKey.trim().length &amp;gt; 0) {
+    return envKey.trim();
+  }
+
+  const home &#x3D; process.env.HOME;
+  if (!home) return null;
+
+  const bashrcPath &#x3D; path.join(home, &amp;#39;.bashrc&amp;#39;);
+  try {
+    const contents &#x3D; readFileSync(bashrcPath, &amp;#39;utf8&amp;#39;);
+    const match &#x3D; contents.match(/export\s+OPENAI_API_KEY\s*&#x3D;\s*[&amp;#39;\&amp;quot;]?([^&amp;#39;\&amp;quot;\n]+)[&amp;#39;\&amp;quot;]?/);
+    if (match &amp;amp;&amp;amp; match[1]) {
+      return match[1].trim();
+    }
+  } catch {
+    // ignore – not present or unreadable
+  }
+
+  return null;
+}
+
+function buildSpanAttributes(agent, args, resourceAttributes) {
+  const attributes &#x3D; {
+    &amp;#39;smith.agent.name&amp;#39;: agent,
+    &amp;#39;smith.agent.args&amp;#39;: args.join(&amp;#39; &amp;#39;),
+    &amp;#39;process.executable.name&amp;#39;: agent,
+    &amp;#39;process.command_line&amp;#39;: [agent, ...args].join(&amp;#39; &amp;#39;),
+    &amp;#39;smith.working_directory&amp;#39;: process.cwd()
+  };
+
+  for (const [key, value] of Object.entries(resourceAttributes)) {
+    if (value !&#x3D;&#x3D; undefined &amp;amp;&amp;amp; value !&#x3D;&#x3D; null &amp;amp;&amp;amp; value !&#x3D;&#x3D; &amp;#39;&amp;#39;) {
+      attributes[key] &#x3D; value;
+    }
+  }
+
+  return attributes;
+}
+
+main().catch(error &#x3D;&amp;gt; {
+  console.error(&amp;#39;[smith] Fatal error:&amp;#39;, error.message ?? error);
+  process.exit(1);
+});
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-4">
+                <div class="file-header">📄 docker/bifrost/entrypoint.sh</div>
+                <div class="file-content">
+                    <pre>#!/usr/bin/env bash
+set -euo pipefail
+
+APP_USER&#x3D;&amp;quot;${APP_USER:-bifrost}&amp;quot;
+APP_GROUP&#x3D;&amp;quot;${APP_GROUP:-$APP_USER}&amp;quot;
+BIFROST_BINARY&#x3D;&amp;quot;${BIFROST_BINARY:-/usr/local/bin/bifrost-http}&amp;quot;
+BIFROST_HOST&#x3D;&amp;quot;${BIFROST_HOST:-0.0.0.0}&amp;quot;
+BIFROST_PORT&#x3D;&amp;quot;${BIFROST_PORT:-8080}&amp;quot;
+BIFROST_APP_DIR&#x3D;&amp;quot;${BIFROST_APP_DIR:-/srv/bifrost/app}&amp;quot;
+BIFROST_USER_CONFIG&#x3D;&amp;quot;${BIFROST_USER_CONFIG:-/srv/bifrost/.config/bifrost}&amp;quot;
+BIFROST_CONFIG_PATH&#x3D;&amp;quot;${BIFROST_CONFIG_PATH:-/etc/bifrost/config.json}&amp;quot;
+BIFROST_LOG_LEVEL&#x3D;&amp;quot;${BIFROST_LOG_LEVEL:-info}&amp;quot;
+BIFROST_LOG_STYLE&#x3D;&amp;quot;${BIFROST_LOG_STYLE:-json}&amp;quot;
+BIFROST_LOG_DIR&#x3D;&amp;quot;${BIFROST_LOG_DIR:-/srv/bifrost/logs}&amp;quot;
+
+APP_HOME&#x3D;&amp;quot;$(getent passwd &amp;quot;${APP_USER}&amp;quot; | cut -d: -f6)&amp;quot;
+if [[ -z &amp;quot;${APP_HOME}&amp;quot; ]]; then
+  echo &amp;quot;[entrypoint] unable to determine home directory for ${APP_USER}&amp;quot; &amp;gt;&amp;amp;2
+  exit 1
+fi
+
+XDG_CONFIG_HOME&#x3D;&amp;quot;$(dirname &amp;quot;${BIFROST_USER_CONFIG}&amp;quot;)&amp;quot;
+mkdir -p &amp;quot;${BIFROST_APP_DIR}&amp;quot; &amp;quot;${BIFROST_USER_CONFIG}&amp;quot; &amp;quot;${XDG_CONFIG_HOME}&amp;quot; &amp;quot;${BIFROST_LOG_DIR}&amp;quot;
+
+if [[ -f &amp;quot;${BIFROST_CONFIG_PATH}&amp;quot; ]]; then
+  cp -f &amp;quot;${BIFROST_CONFIG_PATH}&amp;quot; &amp;quot;${BIFROST_APP_DIR}/config.json&amp;quot;
+  cp -f &amp;quot;${BIFROST_CONFIG_PATH}&amp;quot; &amp;quot;${BIFROST_USER_CONFIG}/config.json&amp;quot;
+fi
+
+chown -R &amp;quot;${APP_USER}:${APP_GROUP}&amp;quot; &amp;quot;${APP_HOME}&amp;quot; &amp;quot;${BIFROST_APP_DIR}&amp;quot; &amp;quot;${BIFROST_USER_CONFIG}&amp;quot; &amp;quot;${BIFROST_LOG_DIR}&amp;quot; &amp;quot;${XDG_CONFIG_HOME}&amp;quot;
+
+export HOME&#x3D;&amp;quot;${APP_HOME}&amp;quot;
+export XDG_CONFIG_HOME
+
+exec gosu &amp;quot;${APP_USER}:${APP_GROUP}&amp;quot; &amp;quot;${BIFROST_BINARY}&amp;quot; \
+  -host &amp;quot;${BIFROST_HOST}&amp;quot; \
+  -port &amp;quot;${BIFROST_PORT}&amp;quot; \
+  -app-dir &amp;quot;${BIFROST_APP_DIR}&amp;quot; \
+  -log-level &amp;quot;${BIFROST_LOG_LEVEL}&amp;quot; \
+  -log-style &amp;quot;${BIFROST_LOG_STYLE}&amp;quot;
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-5">
+                <div class="file-header">📄 observability/otel-collector.yaml</div>
+                <div class="file-content">
+                    <pre>receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+  resource:
+    attributes:
+      - key: service.namespace
+        value: smith-observability
+        action: upsert
+
+exporters:
+  clickhouse:
+    endpoint: ${env:CLICKHOUSE_ENDPOINT}
+    database: ${env:CLICKHOUSE_DATABASE}
+    username: ${env:CLICKHOUSE_USERNAME}
+    password: ${env:CLICKHOUSE_PASSWORD}
+    timeout: 30s
+    sending_queue:
+      enabled: true
+      queue_size: 256
+  logging:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [clickhouse]
+  telemetry:
+    logs:
+      level: info
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-6">
+                <div class="file-header">📄 observability/clickhouse-config/cors.xml</div>
+                <div class="file-content">
+                    <pre>&amp;lt;clickhouse&amp;gt;
+  &amp;lt;http_server_default_response_headers&amp;gt;
+    &amp;lt;Access-Control-Allow-Origin&amp;gt;*&amp;lt;/Access-Control-Allow-Origin&amp;gt;
+    &amp;lt;Access-Control-Allow-Methods&amp;gt;GET,POST,OPTIONS&amp;lt;/Access-Control-Allow-Methods&amp;gt;
+    &amp;lt;Access-Control-Allow-Headers&amp;gt;*&amp;lt;/Access-Control-Allow-Headers&amp;gt;
+  &amp;lt;/http_server_default_response_headers&amp;gt;
+&amp;lt;/clickhouse&amp;gt;
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-7">
+                <div class="file-header">📄 package-lock.json</div>
+                <div class="file-content">
+                    <pre>{
+  &amp;quot;name&amp;quot;: &amp;quot;smith-observability&amp;quot;,
+  &amp;quot;version&amp;quot;: &amp;quot;0.4.0&amp;quot;,
+  &amp;quot;lockfileVersion&amp;quot;: 3,
+  &amp;quot;requires&amp;quot;: true,
+  &amp;quot;packages&amp;quot;: {
+    &amp;quot;&amp;quot;: {
+      &amp;quot;name&amp;quot;: &amp;quot;smith-observability&amp;quot;,
+      &amp;quot;version&amp;quot;: &amp;quot;0.4.0&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;^1.9.0&amp;quot;,
+        &amp;quot;@opentelemetry/exporter-trace-otlp-http&amp;quot;: &amp;quot;^0.53.0&amp;quot;,
+        &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;^1.9.0&amp;quot;,
+        &amp;quot;@opentelemetry/sdk-trace-base&amp;quot;: &amp;quot;^1.9.0&amp;quot;,
+        &amp;quot;@opentelemetry/sdk-trace-node&amp;quot;: &amp;quot;^1.9.0&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;^1.12.0&amp;quot;
+      },
+      &amp;quot;bin&amp;quot;: {
+        &amp;quot;smith&amp;quot;: &amp;quot;bin/smith.mjs&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/api&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.9.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/api/-/api-1.9.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;8.0.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/api-logs&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/api-logs/-/api-logs-0.53.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-8HArjKx+RaAI8uEIgcORbZIPklyh1YLjPSBus8hjRmvLi6DeFzgOcdZ7KwPabKj8mXF8dX0hyfAyGfycz0DbFw&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;^1.0.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/context-async-hooks&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/context-async-hooks/-/context-async-hooks-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-s5vvxXPVdjqS3kTLKMeBMvop9hbWkwzBpu+mUO2M7sZtlkyDJGwFe33wRKnbaYDo8ExRVBIIdwIGrqpxHuKttA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/core&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/core/-/core-1.26.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-1iKxXXE8415Cdv0yjG3G6hQnB5eVEsJce3QaawX8SjDn0mAS0ZM8fAbZZJD4ajvhC15cePvosSCut404KrIIvQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.27.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/core/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.27.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.27.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-sAay1RrB+ONOem0OZanAR1ZI/k7yDpnOQSQmTMuGImUQb2y8EbSaCJ94FQluM74xoU03vlb2d2U90hZluL6nQg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/exporter-trace-otlp-http&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/exporter-trace-otlp-http/-/exporter-trace-otlp-http-0.53.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-m7F5ZTq+V9mKGWYpX8EnZ7NjoqAU7VemQ1E2HAG+W/u0wpY1x0OmbxAXfGKFHCspdJk8UKlwPGrpcB8nay3P8A&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/otlp-exporter-base&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+        &amp;quot;@opentelemetry/otlp-transformer&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+        &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/sdk-trace-base&amp;quot;: &amp;quot;1.26.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;^1.0.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/exporter-trace-otlp-http/node_modules/@opentelemetry/resources&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/resources/-/resources-1.26.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-CPNYchBE7MBecCSVy0HKpUISEeJOniWqcHaAHpmasZ3j9o6V3AyBzhRc90jdmemq0HOxDr6ylhUbDhBqqPpeNw&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.27.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/exporter-trace-otlp-http/node_modules/@opentelemetry/sdk-trace-base&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/sdk-trace-base/-/sdk-trace-base-1.26.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-olWQldtvbK4v22ymrKLbIcBi9L2SpMO84sCPY54IVsJhP9fRsxJT194C/AVaAuJzLE30EdhhM1VmvVYR7az+cw&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.27.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/exporter-trace-otlp-http/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.27.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.27.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-sAay1RrB+ONOem0OZanAR1ZI/k7yDpnOQSQmTMuGImUQb2y8EbSaCJ94FQluM74xoU03vlb2d2U90hZluL6nQg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/otlp-exporter-base&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/otlp-exporter-base/-/otlp-exporter-base-0.53.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-UCWPreGQEhD6FjBaeDuXhiMf6kkBODF0ZQzrk/tuQcaVDJ+dDQ/xhJp192H9yWnKxVpEjFrSSLnpqmX4VwX+eA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/otlp-transformer&amp;quot;: &amp;quot;0.53.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;^1.0.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/otlp-transformer&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/otlp-transformer/-/otlp-transformer-0.53.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-rM0sDA9HD8dluwuBxLetUmoqGJKSAbWenwD65KY9iZhUxdBHRLrIdrABfNDP7aiTjcgK8XFyTn5fhDz7N+W6DA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api-logs&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/sdk-logs&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+        &amp;quot;@opentelemetry/sdk-metrics&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/sdk-trace-base&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;protobufjs&amp;quot;: &amp;quot;^7.3.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;^1.3.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/otlp-transformer/node_modules/@opentelemetry/resources&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/resources/-/resources-1.26.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-CPNYchBE7MBecCSVy0HKpUISEeJOniWqcHaAHpmasZ3j9o6V3AyBzhRc90jdmemq0HOxDr6ylhUbDhBqqPpeNw&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.27.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/otlp-transformer/node_modules/@opentelemetry/sdk-trace-base&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/sdk-trace-base/-/sdk-trace-base-1.26.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-olWQldtvbK4v22ymrKLbIcBi9L2SpMO84sCPY54IVsJhP9fRsxJT194C/AVaAuJzLE30EdhhM1VmvVYR7az+cw&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.27.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/otlp-transformer/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.27.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.27.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-sAay1RrB+ONOem0OZanAR1ZI/k7yDpnOQSQmTMuGImUQb2y8EbSaCJ94FQluM74xoU03vlb2d2U90hZluL6nQg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/propagator-b3&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/propagator-b3/-/propagator-b3-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-oATwWWDIJzybAZ4pO76ATN5N6FFbOA1otibAVlS8v90B4S1wClnhRUk7K+2CHAwN1JKYuj4jh/lpCEG5BAqFuQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.30.1&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/propagator-b3/node_modules/@opentelemetry/core&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/core/-/core-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-OOCM2C/QIURhJMuKaekP3TRBxBKxG/TWWA0TL2J6nXUtDnuCtccy49LUJF8xPFXMX+0LMcxFpCo8M9cGY1W6rQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.28.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/propagator-b3/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.28.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.28.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-lp4qAiMTD4sNWW4DbKLBkfiMZ4jbAboJIGOQr5DvciMRI494OapieI9qiODpOt0XBr1LjIDy1xAGAnVs5supTA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/propagator-jaeger&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/propagator-jaeger/-/propagator-jaeger-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-Pj/BfnYEKIOImirH76M4hDaBSx6HyZ2CXUqk+Kj02m6BB80c/yo4BdWkn/1gDFfU+YPY+bPR2U0DKBfdxCKwmg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.30.1&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/propagator-jaeger/node_modules/@opentelemetry/core&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/core/-/core-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-OOCM2C/QIURhJMuKaekP3TRBxBKxG/TWWA0TL2J6nXUtDnuCtccy49LUJF8xPFXMX+0LMcxFpCo8M9cGY1W6rQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.28.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/propagator-jaeger/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.28.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.28.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-lp4qAiMTD4sNWW4DbKLBkfiMZ4jbAboJIGOQr5DvciMRI494OapieI9qiODpOt0XBr1LjIDy1xAGAnVs5supTA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/resources&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/resources/-/resources-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-5UxZqiAgLYGFjS4s9qm5mBVo433u+dSPUFWVWXmLAD4wB65oMCoXaJP1KJa9DIYYMeHu3z4BZcStG3LC593cWA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.28.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/resources/node_modules/@opentelemetry/core&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/core/-/core-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-OOCM2C/QIURhJMuKaekP3TRBxBKxG/TWWA0TL2J6nXUtDnuCtccy49LUJF8xPFXMX+0LMcxFpCo8M9cGY1W6rQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.28.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/resources/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.28.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.28.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-lp4qAiMTD4sNWW4DbKLBkfiMZ4jbAboJIGOQr5DvciMRI494OapieI9qiODpOt0XBr1LjIDy1xAGAnVs5supTA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-logs&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/sdk-logs/-/sdk-logs-0.53.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-dhSisnEgIj/vJZXZV6f6KcTnyLDx/VuQ6l3ejuZpMpPlh9S1qMHiZU9NMmOkVkwwHkMy3G6mEBwdP23vUZVr4g&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api-logs&amp;quot;: &amp;quot;0.53.0&amp;quot;,
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;1.26.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.4.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-logs/node_modules/@opentelemetry/resources&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/resources/-/resources-1.26.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-CPNYchBE7MBecCSVy0HKpUISEeJOniWqcHaAHpmasZ3j9o6V3AyBzhRc90jdmemq0HOxDr6ylhUbDhBqqPpeNw&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.27.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-logs/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.27.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.27.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-sAay1RrB+ONOem0OZanAR1ZI/k7yDpnOQSQmTMuGImUQb2y8EbSaCJ94FQluM74xoU03vlb2d2U90hZluL6nQg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-metrics&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/sdk-metrics/-/sdk-metrics-1.26.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-0SvDXmou/JjzSDOjUmetAAvcKQW6ZrvosU0rkbDGpXvvZN+pQF6JbK/Kd4hNdK4q/22yeruqvukXEJyySTzyTQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;1.26.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.3.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-metrics/node_modules/@opentelemetry/resources&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/resources/-/resources-1.26.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-CPNYchBE7MBecCSVy0HKpUISEeJOniWqcHaAHpmasZ3j9o6V3AyBzhRc90jdmemq0HOxDr6ylhUbDhBqqPpeNw&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.26.0&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.27.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-metrics/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.27.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.27.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-sAay1RrB+ONOem0OZanAR1ZI/k7yDpnOQSQmTMuGImUQb2y8EbSaCJ94FQluM74xoU03vlb2d2U90hZluL6nQg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-trace-base&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/sdk-trace-base/-/sdk-trace-base-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-jVPgBbH1gCy2Lb7X0AVQ8XAfgg0pJ4nvl8/IiQA6nxOsPvS+0zMJaFSs2ltXe0J6C8dqjcnpyqINDJmU30+uOg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+        &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.28.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-trace-base/node_modules/@opentelemetry/core&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/core/-/core-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-OOCM2C/QIURhJMuKaekP3TRBxBKxG/TWWA0TL2J6nXUtDnuCtccy49LUJF8xPFXMX+0LMcxFpCo8M9cGY1W6rQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.28.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-trace-base/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.28.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.28.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-lp4qAiMTD4sNWW4DbKLBkfiMZ4jbAboJIGOQr5DvciMRI494OapieI9qiODpOt0XBr1LjIDy1xAGAnVs5supTA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-trace-node&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/sdk-trace-node/-/sdk-trace-node-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-cBjYOINt1JxXdpw1e5MlHmFRc5fgj4GW/86vsKFxJCJ8AL4PdVtYH41gWwl4qd4uQjqEL1oJVrXkSy5cnduAnQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/context-async-hooks&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+        &amp;quot;@opentelemetry/core&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+        &amp;quot;@opentelemetry/propagator-b3&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+        &amp;quot;@opentelemetry/propagator-jaeger&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+        &amp;quot;@opentelemetry/sdk-trace-base&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+        &amp;quot;semver&amp;quot;: &amp;quot;^7.5.2&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-trace-node/node_modules/@opentelemetry/core&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.30.1&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/core/-/core-1.30.1.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-OOCM2C/QIURhJMuKaekP3TRBxBKxG/TWWA0TL2J6nXUtDnuCtccy49LUJF8xPFXMX+0LMcxFpCo8M9cGY1W6rQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;1.28.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      },
+      &amp;quot;peerDependencies&amp;quot;: {
+        &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;&amp;gt;&#x3D;1.0.0 &amp;lt;1.10.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/sdk-trace-node/node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.28.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.28.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-lp4qAiMTD4sNWW4DbKLBkfiMZ4jbAboJIGOQr5DvciMRI494OapieI9qiODpOt0XBr1LjIDy1xAGAnVs5supTA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@opentelemetry/semantic-conventions&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.37.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.37.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-JD6DerIKdJGmRp4jQyX5FlrQjA4tjOw1cvfsPAZXfOOEErMUHjPcPSICS+6WnM0nB0efSFARh0KAZss+bvExOA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;14&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@protobufjs/aspromise&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.1.2&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/aspromise/-/aspromise-1.1.2.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@protobufjs/base64&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.1.2&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/base64/-/base64-1.1.2.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-AZkcAA5vnN/v4PDqKyMR5lx7hZttPDgClv83E//FMNhR2TMcLUhfRUBHCmSl0oi9zMgDDqRUJkSxO3wm85+XLg&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@protobufjs/codegen&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;2.0.4&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/codegen/-/codegen-2.0.4.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-YyFaikqM5sH0ziFZCN3xDC7zeGaB/d0IUb9CATugHWbd1FRFwWwt4ld4OYMPWu5a3Xe01mGAULCdqhMlPl29Jg&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@protobufjs/eventemitter&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.1.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/eventemitter/-/eventemitter-1.1.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-j9ednRT81vYJ9OfVuXG6ERSTdEL1xVsNgqpkxMsbIabzSo3goCjDIveeGv5d03om39ML71RdmrGNjG5SReBP/Q&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@protobufjs/fetch&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.1.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/fetch/-/fetch-1.1.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-lljVXpqXebpsijW71PZaCYeIcE5on1w5DlQy5WH6GLbFryLUrBD4932W/E2BSpfRJWseIL4v/KPgBFxDOIdKpQ&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@protobufjs/aspromise&amp;quot;: &amp;quot;^1.1.1&amp;quot;,
+        &amp;quot;@protobufjs/inquire&amp;quot;: &amp;quot;^1.1.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/@protobufjs/float&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.0.2&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/float/-/float-1.0.2.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-Ddb+kVXlXst9d+R9PfTIxh1EdNkgoRe5tOX6t01f1lYWOvJnSPDBlG241QLzcyPdoNTsblLUdujGSE4RzrTZGQ&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@protobufjs/inquire&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.1.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/inquire/-/inquire-1.1.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-kdSefcPdruJiFMVSbn801t4vFK7KB/5gd2fYvrxhuJYg8ILrmn9SKSX2tZdV6V+ksulWqS7aXjBcRXl3wHoD9Q&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@protobufjs/path&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.1.2&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/path/-/path-1.1.2.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-6JOcJ5Tm08dOHAbdR3GrvP+yUUfkjG5ePsHYczMFLq3ZmMkAD98cDgcT2iA1lJ9NVwFd4tH/iSSoe44YWkltEA&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@protobufjs/pool&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.1.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/pool/-/pool-1.1.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-0kELaGSIDBKvcgS4zkjz1PeddatrjYcmMWOlAuAPwAeccUrPHdUqo/J6LiymHHEiJT5NrF1UVwxY14f+fy4WQw&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@protobufjs/utf8&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;1.1.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@protobufjs/utf8/-/utf8-1.1.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/@types/node&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;24.7.2&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/@types/node/-/node-24.7.2.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-/NbVmcGTP+lj5oa4yiYxxeBjRivKQ5Ns1eSZeB99ExsEQ6rX5XYU1Zy/gGxY/ilqtD4Etx9mKyrPxZRetiahhA&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;undici-types&amp;quot;: &amp;quot;~7.14.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/long&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;5.3.2&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/long/-/long-5.3.2.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-mNAgZ1GmyNhD7AuqnTG3/VQ26o760+ZYBPKjPvugO8+nLbYfX6TVpJPseBvopbdY+qpZ/lKUnmEc1LeZYS3QAA&#x3D;&#x3D;&amp;quot;
+    },
+    &amp;quot;node_modules/protobufjs&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;7.5.4&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/protobufjs/-/protobufjs-7.5.4.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-CvexbZtbov6jW2eXAvLukXjXUW1TzFaivC46BpWc/3BpcCysb5Vffu+B3XHMm8lVEuy2Mm4XGex8hBSg1yapPg&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;hasInstallScript&amp;quot;: true,
+      &amp;quot;dependencies&amp;quot;: {
+        &amp;quot;@protobufjs/aspromise&amp;quot;: &amp;quot;^1.1.2&amp;quot;,
+        &amp;quot;@protobufjs/base64&amp;quot;: &amp;quot;^1.1.2&amp;quot;,
+        &amp;quot;@protobufjs/codegen&amp;quot;: &amp;quot;^2.0.4&amp;quot;,
+        &amp;quot;@protobufjs/eventemitter&amp;quot;: &amp;quot;^1.1.0&amp;quot;,
+        &amp;quot;@protobufjs/fetch&amp;quot;: &amp;quot;^1.1.0&amp;quot;,
+        &amp;quot;@protobufjs/float&amp;quot;: &amp;quot;^1.0.2&amp;quot;,
+        &amp;quot;@protobufjs/inquire&amp;quot;: &amp;quot;^1.1.0&amp;quot;,
+        &amp;quot;@protobufjs/path&amp;quot;: &amp;quot;^1.1.2&amp;quot;,
+        &amp;quot;@protobufjs/pool&amp;quot;: &amp;quot;^1.1.0&amp;quot;,
+        &amp;quot;@protobufjs/utf8&amp;quot;: &amp;quot;^1.1.0&amp;quot;,
+        &amp;quot;@types/node&amp;quot;: &amp;quot;&amp;gt;&#x3D;13.7.0&amp;quot;,
+        &amp;quot;long&amp;quot;: &amp;quot;^5.0.0&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;12.0.0&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/semver&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;7.7.3&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/semver/-/semver-7.7.3.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q&#x3D;&#x3D;&amp;quot;,
+      &amp;quot;bin&amp;quot;: {
+        &amp;quot;semver&amp;quot;: &amp;quot;bin/semver.js&amp;quot;
+      },
+      &amp;quot;engines&amp;quot;: {
+        &amp;quot;node&amp;quot;: &amp;quot;&amp;gt;&#x3D;10&amp;quot;
+      }
+    },
+    &amp;quot;node_modules/undici-types&amp;quot;: {
+      &amp;quot;version&amp;quot;: &amp;quot;7.14.0&amp;quot;,
+      &amp;quot;resolved&amp;quot;: &amp;quot;https://registry.npmjs.org/undici-types/-/undici-types-7.14.0.tgz&amp;quot;,
+      &amp;quot;integrity&amp;quot;: &amp;quot;sha512-QQiYxHuyZ9gQUIrmPo3IA+hUl4KYk8uSA7cHrcKd/l3p1OTpZcM0Tbp9x7FAtXdAYhlasd60ncPpgu6ihG6TOA&#x3D;&#x3D;&amp;quot;
+    }
+  }
+}
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-8">
+                <div class="file-header">📄 package.json</div>
+                <div class="file-content">
+                    <pre>{
+  &amp;quot;name&amp;quot;: &amp;quot;smith-observability&amp;quot;,
+  &amp;quot;version&amp;quot;: &amp;quot;0.4.0&amp;quot;,
+  &amp;quot;description&amp;quot;: &amp;quot;Smith observability tooling and Docker stack bootstrapper.&amp;quot;,
+  &amp;quot;type&amp;quot;: &amp;quot;module&amp;quot;,
+  &amp;quot;bin&amp;quot;: {
+    &amp;quot;smith&amp;quot;: &amp;quot;./bin/smith.mjs&amp;quot;
+  },
+  &amp;quot;files&amp;quot;: [
+    &amp;quot;bin&amp;quot;,
+    &amp;quot;docker-compose.yaml&amp;quot;,
+    &amp;quot;bifrost.config.json&amp;quot;,
+    &amp;quot;observability&amp;quot;,
+    &amp;quot;README.md&amp;quot;,
+    &amp;quot;docker&amp;quot;
+  ],
+  &amp;quot;scripts&amp;quot;: {
+    &amp;quot;observe&amp;quot;: &amp;quot;node ./bin/smith.mjs observe&amp;quot;
+  },
+  &amp;quot;dependencies&amp;quot;: {
+    &amp;quot;@opentelemetry/api&amp;quot;: &amp;quot;^1.9.0&amp;quot;,
+    &amp;quot;@opentelemetry/exporter-trace-otlp-http&amp;quot;: &amp;quot;^0.53.0&amp;quot;,
+    &amp;quot;@opentelemetry/resources&amp;quot;: &amp;quot;^1.9.0&amp;quot;,
+    &amp;quot;@opentelemetry/sdk-trace-base&amp;quot;: &amp;quot;^1.9.0&amp;quot;,
+    &amp;quot;@opentelemetry/sdk-trace-node&amp;quot;: &amp;quot;^1.9.0&amp;quot;,
+    &amp;quot;@opentelemetry/semantic-conventions&amp;quot;: &amp;quot;^1.12.0&amp;quot;
+  }
+}
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-9">
+                <div class="file-header">📄 docker-compose.yaml</div>
+                <div class="file-content">
+                    <pre>services:
+  bifrost:
+    build:
+      context: ./docker/bifrost
+    ports:
+      - &amp;quot;16080:8080&amp;quot;
+    environment:
+      BIFROST_HOST: 0.0.0.0
+      BIFROST_PORT: 8080
+      BIFROST_LOG_LEVEL: debug
+      BIFROST_LOG_STYLE: json
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - bifrost_data:/srv/bifrost
+      - ./bifrost.config.json:/etc/bifrost/config.json:ro
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.90.1
+    command:
+      - &amp;quot;--config&#x3D;/etc/otelcol-contrib/otel-collector.yaml&amp;quot;
+    ports:
+      - &amp;quot;13317:4317&amp;quot;
+      - &amp;quot;13318:4318&amp;quot;
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol-contrib/otel-collector.yaml:ro
+    environment:
+      CLICKHOUSE_ENDPOINT: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: otel
+      CLICKHOUSE_USERNAME: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.10
+    ports:
+      - &amp;quot;13123:8123&amp;quot;
+      - &amp;quot;13900:9000&amp;quot;
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./observability/clickhouse-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./observability/clickhouse-config/cors.xml:/etc/clickhouse-server/config.d/cors.xml:ro
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: [&amp;quot;CMD-SHELL&amp;quot;, &amp;quot;clickhouse-client --query &amp;#39;SELECT 1&amp;#39;&amp;quot;]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  bifrost_data:
+  clickhouse_data:
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-10">
+                <div class="file-header">📄 bifrost.config.json</div>
+                <div class="file-content">
+                    <pre>{
+  &amp;quot;$schema&amp;quot;: &amp;quot;https://www.getmaxim.ai/schema&amp;quot;,
+  &amp;quot;client&amp;quot;: {
+    &amp;quot;enable_logging&amp;quot;: true,
+    &amp;quot;log_level&amp;quot;: &amp;quot;info&amp;quot;,
+    &amp;quot;log_output_style&amp;quot;: &amp;quot;json&amp;quot;,
+    &amp;quot;allow_direct_keys&amp;quot;: true,
+    &amp;quot;prometheus_labels&amp;quot;: [
+      &amp;quot;smith.project&amp;quot;,
+      &amp;quot;smith.environment&amp;quot;
+    ]
+  },
+  &amp;quot;providers&amp;quot;: {
+    &amp;quot;openai&amp;quot;: {
+      &amp;quot;base_url&amp;quot;: &amp;quot;https://api.openai.com&amp;quot;,
+      &amp;quot;keys&amp;quot;: [
+        {
+          &amp;quot;value&amp;quot;: &amp;quot;env.OPENAI_API_KEY&amp;quot;,
+          &amp;quot;weight&amp;quot;: 1
+        }
+      ],
+      &amp;quot;request_logging&amp;quot;: {
+        &amp;quot;enabled&amp;quot;: true,
+        &amp;quot;log_headers&amp;quot;: true,
+        &amp;quot;log_body&amp;quot;: true,
+        &amp;quot;log_path&amp;quot;: &amp;quot;/srv/bifrost/logs/openai-requests.jsonl&amp;quot;
+      }
+    }
+  },
+  &amp;quot;plugins&amp;quot;: [
+    {
+      &amp;quot;name&amp;quot;: &amp;quot;otel&amp;quot;,
+      &amp;quot;enabled&amp;quot;: true,
+      &amp;quot;config&amp;quot;: {
+        &amp;quot;collector_url&amp;quot;: &amp;quot;otel-collector:4317&amp;quot;,
+        &amp;quot;trace_type&amp;quot;: &amp;quot;otel&amp;quot;,
+        &amp;quot;protocol&amp;quot;: &amp;quot;grpc&amp;quot;
+      }
+    },
+    {
+      &amp;quot;name&amp;quot;: &amp;quot;telemetry&amp;quot;,
+      &amp;quot;enabled&amp;quot;: true,
+      &amp;quot;config&amp;quot;: {
+        &amp;quot;capture_usage_metrics&amp;quot;: true,
+        &amp;quot;usage_attributes&amp;quot;: true,
+        &amp;quot;custom_labels&amp;quot;: [
+          &amp;quot;smith.project&amp;quot;,
+          &amp;quot;smith.environment&amp;quot;
+        ]
+      }
+    }
+  ]
+}
+</pre>
+                </div>
+            </div>
+            <div class="file-section" id="file-11">
+                <div class="file-header">📄 README.md</div>
+                <div class="file-content">
+                    <pre># Smith Observability Toolkit
+
+A lightweight toolkit for bootstrapping the Smith observability stack. Install
+the npm package globally and call &#x60;smith observe &amp;lt;agent&amp;gt;&#x60; from any git
+repository to start collecting traces from your favourite agent CLI.
+
+The command:
+
+- ensures the bundled Bifrost gateway plus OpenTelemetry Collector + ClickHouse stack are running,
+- wires sensible OTLP defaults for the agent process,
+- annotates spans with git metadata from the current repository, and
+- launches the agent binary while streaming its stdout/stderr.
+
+## Prerequisites
+
+- Docker with the Compose plugin (or &#x60;docker-compose&#x60;)
+- Node.js 18+
+- An agent CLI available on your &#x60;PATH&#x60; (for example &#x60;claude&#x60;, &#x60;codex&#x60;, &#x60;smith-agent&#x60;)
+
+## Install
+
+&#x60;&#x60;&#x60;bash
+npm install -g smith-observability
+&#x60;&#x60;&#x60;
+
+During development you can run &#x60;npm link&#x60; inside the cloned repository instead
+of performing a global install.
+
+## Usage
+
+&#x60;&#x60;&#x60;bash
+smith observe &amp;lt;agent&amp;gt; [-- &amp;lt;agent args&amp;gt;]
+&#x60;&#x60;&#x60;
+
+Arguments following the optional &#x60;--&#x60; delimiter are forwarded to the agent
+exactly as provided (the delimiter itself is stripped).
+
+Examples:
+
+- &#x60;smith observe claude&#x60;
+- &#x60;smith observe smith-agent -- --config ~/.smith/config.json&#x60;
+
+Provide your model API keys through standard environment variables (for example
+&#x60;OPENAI_API_KEY&#x60;, &#x60;ANTHROPIC_API_KEY&#x60;). They are passed directly into the Bifrost
+gateway container so routed requests have access to the required credentials.
+When a request carries its own &#x60;Authorization: Bearer ...&#x60; header, Bifrost prefers
+that header; otherwise it falls back to the keys you supplied via environment
+variables.
+
+### What happens when you call &#x60;smith observe&#x60;
+
+1. &#x60;docker compose up -d&#x60; runs against the package’s &#x60;docker-compose.yaml&#x60;. The
+   call is idempotent and only starts services that are not already running.
+2. The command waits for &#x60;http://localhost:13318&#x60; (OTLP/HTTP) to accept requests.
+3. Bifrost is probed on &#x60;http://localhost:16080/healthz&#x60; so requests can be routed
+   through the gateway once the agent launches.
+4. Default OTEL environment variables are enforced (unless you set &#x60;SMITH_OBSERVABILITY_KEEP_OTEL&#x3D;1&#x60;):
+   - &#x60;OTEL_EXPORTER_OTLP_ENDPOINT&#x3D;localhost:13317&#x60;
+   - &#x60;OTEL_EXPORTER_OTLP_TRACES_ENDPOINT&#x3D;http://localhost:13318/v1/traces&#x60;
+   - &#x60;OTEL_EXPORTER_OTLP_PROTOCOL&#x3D;grpc&#x60; / &#x60;OTEL_EXPORTER_OTLP_TRACES_PROTOCOL&#x3D;http/protobuf&#x60;
+   - &#x60;OTEL_EXPORTER_OTLP_INSECURE&#x3D;true&#x60;
+   - &#x60;OTEL_RESOURCE_ATTRIBUTES&#x60; gains &#x60;service.name&#x3D;smith-agent-&amp;lt;agent&amp;gt;&#x60; and &#x60;smith.agent.name&#x3D;&amp;lt;agent&amp;gt;&#x60;
+   - &#x60;OTEL_SERVICE_NAME&#x60; mirrors &#x60;service.name&#x60;
+5. Git metadata gathered from the current working directory (root path, current
+   branch, &#x60;remote.origin.url&#x60;, and whether the tree is dirty) is appended to
+   &#x60;OTEL_RESOURCE_ATTRIBUTES&#x60; as &#x60;smith.git.root&#x60;, &#x60;smith.git.branch&#x60;,
+   &#x60;smith.git.remote&#x60;, and &#x60;smith.git.status_dirty&#x60;.
+6. Supported CLIs (today &#x60;claude&#x60; and &#x60;codex&#x60;) have their base URLs rewritten to
+   &#x60;http://localhost:16080&#x60;, ensuring requests flow through Bifrost without
+   manual configuration.
+7. The CLI emits a parent &#x60;smith.observe&#x60; span (using the same OTLP endpoint) so
+   every agent invocation generates at least one trace enriched with git context
+   and exit status.
+8. The agent process is launched with the enriched environment. When the agent
+   exits, its exit code is propagated back to the caller.
+
+If you need to preserve your own OTEL settings, run with
+&#x60;SMITH_OBSERVABILITY_KEEP_OTEL&#x3D;1 smith observe &amp;lt;agent&amp;gt;&#x60; and override only the
+variables you care about (&#x60;OTEL_RESOURCE_ATTRIBUTES&#x60; values you provide will be
+merged with the git metadata).
+
+### Stopping the stack
+
+When you are finished collecting traces:
+
+&#x60;&#x60;&#x60;bash
+docker compose -p smith-observability -f &amp;quot;$(npm root -g)/smith-observability/docker-compose.yaml&amp;quot; down
+&#x60;&#x60;&#x60;
+
+If you are working from a clone of the repository, you can also run the same
+command from that directory without the absolute path. Should Docker report a
+name conflict, remove any old containers (for example via &#x60;docker rm &amp;lt;container&amp;gt;&#x60;) or
+run the &#x60;down&#x60; command above before restarting &#x60;smith observe&#x60;.
+
+## Observability stack
+
+The compose file launches three services:
+
+- **bifrost** – A Bifrost gateway (running on &#x60;http://localhost:16080&#x60;) proxies agent traffic straight to the upstream provider. It honours inbound &#x60;Authorization&#x60; headers and falls back to the provided &#x60;OPENAI_API_KEY&#x60; when none is present. The container ships with Go auto-instrumentation so gateway spans and usage metadata are exported through OTLP.
+- **otel-collector** – Receives spans via OTLP on &#x60;localhost:13317&#x60; (gRPC) / &#x60;localhost:13318&#x60; (HTTP) and forwards them to ClickHouse.
+- **clickhouse** – Retains spans for historical queries (&#x60;http://localhost:13123&#x60;, native TCP on &#x60;localhost:13900&#x60;).
+
+All configuration files live under &#x60;observability/&#x60; and ship with the npm
+package, so the CLI can operate without a local checkout. Bifrost reads
+&#x60;bifrost.config.json&#x60;; tweak this to change upstream providers, plugin options,
+or to harden logging/telemetry behavior.
+
+## Exploring traces
+
+- ClickHouse SQL: &#x60;docker compose -p smith-observability exec clickhouse clickhouse-client --query &amp;quot;SELECT count() FROM otel.otel_traces&amp;quot;&#x60;.
+- The OTLP endpoint (&#x60;http://localhost:13318&#x60;) remains available for additional workloads while the stack is running.
+- Bifrost exposes a lightweight dashboard on &#x60;http://localhost:16080&#x60; showing routed calls and usage counters.
+- Two helper views are created automatically in ClickHouse:
+  - &#x60;otel.agent_runs&#x60; – one row per trace with git metadata, span counts, and timing details.
+  - &#x60;otel.session_timeline&#x60; – 1-hour buckets derived from &#x60;agent_runs&#x60; for lightweight dashboards.
+  (On first launch the ClickHouse container executes &#x60;observability/clickhouse-init.sql&#x60; automatically; if you reuse an older volume, rerun the script manually with &#x60;docker compose -p smith-observability exec -T clickhouse clickhouse-client --multiquery &amp;lt; observability/clickhouse-init.sql&#x60;.)
+
+## Repository layout
+
+&#x60;&#x60;&#x60;
+bin/smith.mjs           CLI entrypoint
+docker-compose.yaml     Observability services
+docker/bifrost/         Bifrost container image and entrypoint
+bifrost.config.json     Bifrost gateway configuration
+observability/          Collector and ClickHouse configs
+README.md               This guide
+&#x60;&#x60;&#x60;
+
+Feel free to fork and adapt the compose file or configs for your own agents.
+</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Load self-contained bundle (includes React, ReactDOM, React Arborist, and Lucide React) -->
+    <script src="assets/scribe-tree-bundle.js"></script>
+    
+    <script>
+        // File data from Handlebars template
+        const fileData = [
+            {
+                path: "DIRECTORY_MAP.txt",
+                icon: "file-text",
+                index: 0,
+                size: "2.34 KB",
+                tokens: "715",
+                score: "1.00"
+            },
+            {
+                path: "observability/clickhouse-init.sql",
+                icon: "database",
+                index: 1,
+                size: "6.99 KB",
+                tokens: "1,710",
+                score: "0.78"
+            },
+            {
+                path: "bin/smith.mjs",
+                icon: "file-code",
+                index: 2,
+                size: "19.38 KB",
+                tokens: "4,878",
+                score: "0.78"
+            },
+            {
+                path: "docker/bifrost/entrypoint.sh",
+                icon: "terminal",
+                index: 3,
+                size: "1.52 KB",
+                tokens: "513",
+                score: "0.60"
+            },
+            {
+                path: "observability/otel-collector.yaml",
+                icon: "list",
+                index: 4,
+                size: "728.00 B",
+                tokens: "160",
+                score: "0.53"
+            },
+            {
+                path: "observability/clickhouse-config/cors.xml",
+                icon: "globe",
+                index: 5,
+                size: "324.00 B",
+                tokens: "73",
+                score: "0.53"
+            },
+            {
+                path: "package-lock.json",
+                icon: "braces",
+                index: 6,
+                size: "24.55 KB",
+                tokens: "7,621",
+                score: "0.53"
+            },
+            {
+                path: "package.json",
+                icon: "package",
+                index: 7,
+                size: "712.00 B",
+                tokens: "186",
+                score: "0.53"
+            },
+            {
+                path: "docker-compose.yaml",
+                icon: "box",
+                index: 8,
+                size: "1.66 KB",
+                tokens: "384",
+                score: "0.53"
+            },
+            {
+                path: "bifrost.config.json",
+                icon: "braces",
+                index: 9,
+                size: "1.10 KB",
+                tokens: "236",
+                score: "0.53"
+            },
+            {
+                path: "README.md",
+                icon: "book-open",
+                index: 10,
+                size: "6.35 KB",
+                tokens: "1,025",
+                score: "0.27"
+            }
+        ];
+
+        // Initialize the file tree
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.ScribeFileTree) {
+                const fileTree = new window.ScribeFileTree();
+                const success = fileTree.renderTree('file-tree-container', fileData);
+                
+                if (success) {
+                    console.log('File tree rendered successfully');
+                } else {
+                    console.error('Failed to render file tree');
+                    // Fallback to simple list
+                    const container = document.getElementById('file-tree-container');
+                    if (container) {
+                        container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">Tree view failed to load. Use the file list below.</div>';
+                    }
+                }
+            } else {
+                console.error('ScribeFileTree not available');
+            }
+            
+            // Initialize control buttons and ping mechanism
+            initializeControls();
+        });
+        
+        // Control functionality
+        function initializeControls() {
+            // Ping server every 30 seconds to keep alive
+            setInterval(pingServer, 30000);
+            
+            // Initial ping
+            pingServer();
+            
+            // Setup button event listeners
+            const saveBtn = document.getElementById('save-btn');
+            const shutdownBtn = document.getElementById('shutdown-btn');
+            
+            if (saveBtn) {
+                saveBtn.addEventListener('click', handleSave);
+            }
+            
+            if (shutdownBtn) {
+                shutdownBtn.addEventListener('click', handleShutdown);
+            }
+        }
+        
+        async function pingServer() {
+            try {
+                const response = await fetch('/api/ping', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    updateConnectionStatus(true);
+                } else {
+                    updateConnectionStatus(false);
+                }
+            } catch (error) {
+                console.warn('Ping failed:', error);
+                updateConnectionStatus(false);
+            }
+        }
+        
+        function updateConnectionStatus(isOnline) {
+            const statusDot = document.getElementById('connection-status');
+            const statusText = document.getElementById('status-text');
+            
+            if (statusDot && statusText) {
+                if (isOnline) {
+                    statusDot.className = 'status-dot online';
+                    statusText.textContent = 'Connected';
+                } else {
+                    statusDot.className = 'status-dot offline';
+                    statusText.textContent = 'Disconnected';
+                }
+            }
+        }
+        
+        async function handleSave() {
+            const saveBtn = document.getElementById('save-btn');
+            if (!saveBtn) return;
+            
+            // Disable button and show loading
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '⏳ Saving...';
+            
+            try {
+                // Get current selected files from the tree
+                const selectedFiles = getSelectedFiles();
+                
+                const response = await fetch('/api/bundle/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        files: selectedFiles
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    saveBtn.innerHTML = '✅ Saved!';
+                    setTimeout(() => {
+                        saveBtn.innerHTML = '💾 Save Bundle';
+                        saveBtn.disabled = false;
+                    }, 2000);
+                } else {
+                    throw new Error('Save failed');
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                saveBtn.innerHTML = '❌ Save Failed';
+                setTimeout(() => {
+                    saveBtn.innerHTML = '💾 Save Bundle';
+                    saveBtn.disabled = false;
+                }, 2000);
+            }
+        }
+        
+        async function handleShutdown() {
+            if (!confirm('Are you sure you want to shutdown the server?')) {
+                return;
+            }
+            
+            const shutdownBtn = document.getElementById('shutdown-btn');
+            if (!shutdownBtn) return;
+            
+            // Disable button and show loading
+            shutdownBtn.disabled = true;
+            shutdownBtn.innerHTML = '⏳ Shutting down...';
+            
+            try {
+                const response = await fetch('/api/shutdown', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    shutdownBtn.innerHTML = '✅ Server stopped';
+                    updateConnectionStatus(false);
+                    // Show goodbye message
+                    setTimeout(() => {
+                        document.body.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-size: 24px; color: var(--text-primary);">🛑 Server has been shut down</div>';
+                    }, 1000);
+                } else {
+                    throw new Error('Shutdown failed');
+                }
+            } catch (error) {
+                console.error('Shutdown error:', error);
+                shutdownBtn.innerHTML = '❌ Shutdown Failed';
+                setTimeout(() => {
+                    shutdownBtn.innerHTML = '🛑 Shutdown Server';
+                    shutdownBtn.disabled = false;
+                }, 2000);
+            }
+        }
+        
+        function getSelectedFiles() {
+            // This would integrate with the React tree component
+            // For now, return all files as selected
+            return fileData.map(file => file.path);
+        }
+    </script>
+</body>
+</html>

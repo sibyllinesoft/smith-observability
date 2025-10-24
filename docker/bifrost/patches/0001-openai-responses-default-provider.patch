@@ -1,0 +1,13 @@
+diff --git a/transports/bifrost-http/handlers/inference.go b/transports/bifrost-http/handlers/inference.go
+index cd5dca8..b057df6 100644
+--- a/transports/bifrost-http/handlers/inference.go
++++ b/transports/bifrost-http/handlers/inference.go
+@@ -427,7 +427,7 @@ func (h *CompletionHandler) responses(ctx *fasthttp.RequestCtx) {
+ 	}
+ 
+ 	// Create BifrostResponsesRequest directly using segregated structure
+-	provider, modelName := schemas.ParseModelString(req.Model, "")
++	provider, modelName := schemas.ParseModelString(req.Model, schemas.OpenAI)
+ 	if provider == "" || modelName == "" {
+ 		SendError(ctx, fasthttp.StatusBadRequest, "model should be in provider/model format", h.logger)
+ 		return

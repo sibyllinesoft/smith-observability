@@ -1,0 +1,209 @@
+diff --git a/core/schemas/responses.go b/core/schemas/responses.go
+index dd2377b..e4a367a 100644
+--- a/core/schemas/responses.go
++++ b/core/schemas/responses.go
+@@ -3,6 +3,7 @@ package schemas
+ import (
+ 	"fmt"
+ 	"maps"
++	"strings"
+ 
+ 	"github.com/bytedance/sonic"
+ )
+@@ -597,6 +598,11 @@ func (rc ResponsesMessageContent) MarshalJSON() ([]byte, error) {
+ // It determines whether "content" is a string or array and assigns to the appropriate field.
+ // It also handles direct string/array content without a wrapper object.
+ func (rc *ResponsesMessageContent) UnmarshalJSON(data []byte) error {
++	if strings.TrimSpace(string(data)) == "null" {
++		rc.ContentStr = nil
++		rc.ContentBlocks = nil
++		return nil
++	}
+ 	// First, try to unmarshal as a direct string
+ 	var stringContent string
+ 	if err := sonic.Unmarshal(data, &stringContent); err == nil {
+@@ -990,41 +996,54 @@ func (rf ResponsesFunctionToolCallOutput) MarshalJSON() ([]byte, error) {
+ // It determines whether "content" is a string or array and assigns to the appropriate field.
+ // It also handles direct string/array content without a wrapper object.
+ func (rf *ResponsesFunctionToolCallOutput) UnmarshalJSON(data []byte) error {
+-	// Parse as generic object to check if it contains content-like fields
+-	var genericObj map[string]interface{}
+-	if err := sonic.Unmarshal(data, &genericObj); err != nil {
+-		return err
+-	}
+-
+-	// If the object doesn't contain typical content fields, it's probably not meant for this struct
+-	// (e.g., it's a tool call, not a tool call output)
+-	hasContentFields := false
+-	for key := range genericObj {
+-		if key == "content" || key == "output" || key == "result" {
+-			hasContentFields = true
+-			break
+-		}
+-	}
+-
+-	if !hasContentFields {
+-		return nil // Skip unmarshaling if no relevant content fields
+-	}
+-
+-	// First, try to unmarshal as a direct string
++	// First, try to unmarshal the value directly as the raw output string.
+ 	var stringContent string
+ 	if err := sonic.Unmarshal(data, &stringContent); err == nil {
+ 		rf.ResponsesFunctionToolCallOutputStr = &stringContent
+ 		return nil
+ 	}
+ 
+-	// Try to unmarshal as a direct array of ContentBlock
++	// Next, attempt to decode directly into content blocks.
+ 	var arrayContent []ResponsesMessageContentBlock
+ 	if err := sonic.Unmarshal(data, &arrayContent); err == nil {
+ 		rf.ResponsesFunctionToolCallOutputBlocks = arrayContent
+ 		return nil
+ 	}
+ 
+-	return fmt.Errorf("content field is neither a string nor an array of Content blocks")
++	// Finally, inspect objects that wrap the output in a field such as "output" or "content".
++	var genericObj map[string]any
++	if err := sonic.Unmarshal(data, &genericObj); err != nil {
++		return err
++	}
++
++	for _, key := range []string{"output", "content", "result"} {
++		value, ok := genericObj[key]
++		if !ok {
++			continue
++		}
++
++		if str, ok := value.(string); ok {
++			rf.ResponsesFunctionToolCallOutputStr = &str
++			return nil
++		}
++
++		encoded, err := sonic.Marshal(value)
++		if err != nil {
++			return err
++		}
++
++		if err := sonic.Unmarshal(encoded, &arrayContent); err == nil {
++			rf.ResponsesFunctionToolCallOutputBlocks = arrayContent
++			return nil
++		}
++
++		str := string(encoded)
++		rf.ResponsesFunctionToolCallOutputStr = &str
++		return nil
++	}
++
++	// No recognised content field present – leave the struct empty.
++	return nil
+ }
+ 
+ // -----------------------------------------------------------------------------
+diff --git a/core/schemas/responses_test.go b/core/schemas/responses_test.go
+new file mode 100644
+index 0000000..eb55306
+--- /dev/null
++++ b/core/schemas/responses_test.go
+@@ -0,0 +1,97 @@
++package schemas
++
++import (
++	"testing"
++
++	"github.com/bytedance/sonic"
++)
++
++func TestResponsesMessageContentUnmarshalNull(t *testing.T) {
++	var content ResponsesMessageContent
++	if err := sonic.Unmarshal([]byte("null"), &content); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++
++	if content.ContentStr != nil {
++		t.Fatalf("expected ContentStr to be nil, got %q", *content.ContentStr)
++	}
++	if content.ContentBlocks != nil {
++		t.Fatalf("expected ContentBlocks to be nil, got %v", content.ContentBlocks)
++	}
++}
++
++func TestResponsesMessageUnmarshalReasoningWithNullContent(t *testing.T) {
++	raw := []byte(`{"type":"reasoning","summary":[],"content":null,"encrypted_content":null}`)
++
++	var message ResponsesMessage
++	if err := sonic.Unmarshal(raw, &message); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++
++	if message.Content != nil {
++		t.Fatalf("expected Content to be nil, got %+v", message.Content)
++	}
++
++	if message.ResponsesReasoning == nil {
++		t.Fatal("expected ResponsesReasoning to be initialised")
++	}
++}
++
++func TestResponsesFunctionToolCallOutputWrappedString(t *testing.T) {
++	raw := []byte(`{"type":"function_call_output","call_id":"call_1","output":"{\"output\":\"/tmp\"}"}`)
++
++	var message ResponsesMessage
++	if err := sonic.Unmarshal(raw, &message); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++
++	if message.ResponsesToolMessage == nil || message.ResponsesToolMessage.ResponsesFunctionToolCallOutput == nil {
++		t.Fatal("expected function tool call output to be initialised")
++	}
++
++	output := message.ResponsesToolMessage.ResponsesFunctionToolCallOutput.ResponsesFunctionToolCallOutputStr
++	if output == nil || *output == "" {
++		t.Fatalf("expected output string to be set, got %v", output)
++	}
++}
++
++func TestResponsesMessageArrayIncludesFunctionCallOutput(t *testing.T) {
++	raw := []byte(`[` +
++		`{"type":"message","role":"user","content":[{"type":"input_text","text":"look around"}]},` +
++		`{"type":"reasoning","summary":[],"content":null,"encrypted_content":null},` +
++		`{"type":"function_call","name":"shell","arguments":"{\"command\":[\"pwd\"]}","call_id":"call_1"},` +
++		`{"type":"function_call_output","call_id":"call_1","output":"{\"output\":\"/tmp\"}"}` +
++		`]`)
++
++	var messages []ResponsesMessage
++	if err := sonic.Unmarshal(raw, &messages); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++
++	if len(messages) != 4 {
++		t.Fatalf("unexpected message count: %d", len(messages))
++	}
++
++	if messages[1].ResponsesReasoning == nil {
++		t.Fatal("expected reasoning message to be initialised")
++	}
++
++	output := messages[3].ResponsesToolMessage.ResponsesFunctionToolCallOutput.ResponsesFunctionToolCallOutputStr
++	if output == nil || *output == "" {
++		t.Fatalf("expected function call output to be captured, got %v", output)
++	}
++}
++
++func TestResponsesFunctionToolCallOutputWrappedObject(t *testing.T) {
++	raw := []byte(`{"type":"function_call_output","call_id":"call_1","output":{"result":"done"}}`)
++
++	var message ResponsesMessage
++	if err := sonic.Unmarshal(raw, &message); err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++
++	if message.ResponsesToolMessage == nil || message.ResponsesToolMessage.ResponsesFunctionToolCallOutput == nil {
++		t.Fatal("expected function tool call output to be initialised")
++	}
++
++	output := message.ResponsesToolMessage.ResponsesFunctionToolCallOutput.ResponsesFunctionToolCallOutputStr
++	if output == nil || *output == "" {
++		t.Fatalf("expected function call output to be captured, got %v", output)
++	}
++}

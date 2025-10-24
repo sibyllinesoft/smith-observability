@@ -26,7 +26,8 @@ const DEFAULT_OTEL_GRPC_ENDPOINT = 'localhost:13317';
 const DEFAULT_BIFROST_URL = 'http://127.0.0.1:16080';
 const HEALTH_CHECK_TIMEOUT_MS = 15000;
 const HEALTH_CHECK_INTERVAL_MS = 500;
-const DEFAULT_CODEX_MODEL = process.env.CODEX_DEFAULT_MODEL ?? 'gpt-4.1-mini';
+const CODEX_FALLBACK_MODEL = 'gpt-5-codex';
+const CODEX_PROVIDER_KEY = 'openai-responses';
 const BIFROST_HEALTH_PATH = '/healthz';
 const CLICKHOUSE_SCHEMA_PATH = '/docker-entrypoint-initdb.d/00-init.sql';
 
@@ -57,7 +58,24 @@ async function main() {
   const agentArgs = rest[0] === '--' ? rest.slice(1) : rest;
   const { env: baseEnv, resourceAttributes } = await buildAgentConfiguration(agent);
   await waitForBifrost(baseEnv.SMITH_BIFROST_URL);
-  const { env: finalEnv, args: finalArgs } = configureAgent(agent, agentArgs, baseEnv);
+  const {
+    env: finalEnv,
+    args: finalArgs,
+    resolvedModel,
+    resolvedModelSource
+  } = configureAgent(agent, agentArgs, baseEnv);
+
+  if (resolvedModel) {
+    resourceAttributes['smith.agent.model'] = resolvedModel;
+    finalEnv.OTEL_RESOURCE_ATTRIBUTES = serialiseResourceAttributes(resourceAttributes);
+  }
+
+  if (resolvedModel && resolvedModelSource === 'fallback') {
+    console.log(`[smith] Using Codex model fallback: ${resolvedModel}`);
+  } else if (resolvedModel && resolvedModelSource === 'env') {
+    console.log(`[smith] Using Codex model from CODEX_DEFAULT_MODEL: ${resolvedModel}`);
+  }
+
   const tracing = initializeTracing(resourceAttributes, finalEnv);
 
   await runAgent(agent, finalArgs, finalEnv, tracing, resourceAttributes);
@@ -184,7 +202,7 @@ async function waitForBifrost(rawGatewayUrl) {
       });
       clearTimeout(timeout);
 
-      if (response.ok) {
+      if (response.ok || response.status === 404) {
         return;
       }
     } catch {
@@ -471,10 +489,16 @@ function configureCodexAgent(originalArgs, env) {
     nextEnv.CODEX_BASE_URL = openAiBaseUrl;
   }
 
-  const transformedArgs = transformCodexArgs(originalArgs, openAiBaseUrl);
+  const {
+    args: transformedArgs,
+    resolvedModel,
+    resolvedModelSource
+  } = transformCodexArgs(originalArgs, openAiBaseUrl);
   return {
     args: transformedArgs,
-    env: nextEnv
+    env: nextEnv,
+    resolvedModel,
+    resolvedModelSource
   };
 }
 
@@ -504,6 +528,8 @@ function transformCodexArgs(originalArgs, openAiBaseUrl) {
   let hasModelArgument = false;
   let hasModelProviderOverride = false;
   let hasProviderConfigOverride = false;
+  let resolvedModel;
+  let resolvedModelSource;
   const result = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -516,7 +542,9 @@ function transformCodexArgs(originalArgs, openAiBaseUrl) {
     if (arg === '--model' || arg === '-m') {
       const next = args[index + 1];
       if (typeof next === 'string') {
-        result.push(arg, prefixModel(next));
+        resolvedModel = prefixModel(next);
+        resolvedModelSource = 'args';
+        result.push(arg, resolvedModel);
         hasModelArgument = true;
         index += 1;
         continue;
@@ -527,14 +555,18 @@ function transformCodexArgs(originalArgs, openAiBaseUrl) {
 
     if (arg.startsWith('--model=')) {
       const [, value] = arg.split('=', 2);
-      result.push(`--model=${prefixModel(value ?? '')}`);
+      resolvedModel = prefixModel(value ?? '');
+      resolvedModelSource = 'args';
+      result.push(`--model=${resolvedModel}`);
       hasModelArgument = true;
       continue;
     }
 
     if (arg.startsWith('-m=')) {
       const [, value] = arg.split('=', 2);
-      result.push(`-m=${prefixModel(value ?? '')}`);
+      resolvedModel = prefixModel(value ?? '');
+      resolvedModelSource = 'args';
+      result.push(`-m=${resolvedModel}`);
       hasModelArgument = true;
       continue;
     }
@@ -544,7 +576,7 @@ function transformCodexArgs(originalArgs, openAiBaseUrl) {
       if (next.includes('model_provider=')) {
         hasModelProviderOverride = true;
       }
-      if (next.includes('model_providers.openai-chat-completions')) {
+      if (next.includes(`model_providers.${CODEX_PROVIDER_KEY}`)) {
         hasProviderConfigOverride = true;
       }
       result.push(arg);
@@ -555,7 +587,7 @@ function transformCodexArgs(originalArgs, openAiBaseUrl) {
       if (arg.includes('model_provider=')) {
         hasModelProviderOverride = true;
       }
-      if (arg.includes('model_providers.openai-chat-completions')) {
+      if (arg.includes(`model_providers.${CODEX_PROVIDER_KEY}`)) {
         hasProviderConfigOverride = true;
       }
       result.push(arg);
@@ -565,7 +597,7 @@ function transformCodexArgs(originalArgs, openAiBaseUrl) {
     if (arg.includes('model_provider=')) {
       hasModelProviderOverride = true;
     }
-    if (arg.includes('model_providers.openai-chat-completions')) {
+    if (arg.includes(`model_providers.${CODEX_PROVIDER_KEY}`)) {
       hasProviderConfigOverride = true;
     }
 
@@ -573,18 +605,27 @@ function transformCodexArgs(originalArgs, openAiBaseUrl) {
   }
 
   if (!hasModelArgument) {
-    result.push('--model', prefixModel(DEFAULT_CODEX_MODEL));
+    const { model, source } = resolveDefaultCodexModel();
+    if (model) {
+      resolvedModel = prefixModel(model);
+      resolvedModelSource = source;
+      result.push('--model', resolvedModel);
+    }
   }
 
   if (!hasModelProviderOverride) {
-    result.push('--config', 'model_provider="openai-chat-completions"');
+    result.push('--config', `model_provider="${CODEX_PROVIDER_KEY}"`);
   }
   if (!hasProviderConfigOverride) {
-    const providerConfig = `model_providers.openai-chat-completions={name="OpenAI Chat Completions",base_url="${openAiBaseUrl}",env_key="OPENAI_API_KEY",wire_api="chat"}`;
+    const providerConfig = `model_providers.${CODEX_PROVIDER_KEY}={name="OpenAI Responses",base_url="${openAiBaseUrl}",env_key="OPENAI_API_KEY",wire_api="responses"}`;
     result.push('--config', providerConfig);
   }
 
-  return result;
+  return {
+    args: result,
+    resolvedModel,
+    resolvedModelSource
+  };
 }
 
 function resolveGatewayUrl(env) {
@@ -682,7 +723,24 @@ function buildSpanAttributes(agent, args, resourceAttributes) {
   return attributes;
 }
 
-main().catch(error => {
-  console.error('[smith] Fatal error:', error.message ?? error);
-  process.exit(1);
-});
+function resolveDefaultCodexModel() {
+  const envValue = process.env.CODEX_DEFAULT_MODEL;
+  if (typeof envValue === 'string') {
+    const trimmed = envValue.trim();
+    if (trimmed.length > 0) {
+      return { model: trimmed, source: 'env' };
+    }
+  }
+  return { model: CODEX_FALLBACK_MODEL, source: 'fallback' };
+}
+
+if (process.env.SMITH_OBSERVABILITY_SKIP_MAIN === '1') {
+  // Running under tests – skip executing the CLI entrypoint.
+} else {
+  main().catch(error => {
+    console.error('[smith] Fatal error:', error.message ?? error);
+    process.exit(1);
+  });
+}
+
+export { transformCodexArgs, prefixModel, resolveDefaultCodexModel };

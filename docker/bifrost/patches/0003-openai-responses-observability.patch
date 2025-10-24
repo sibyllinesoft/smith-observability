@@ -1,0 +1,232 @@
+diff --git a/core/providers/openai.go b/core/providers/openai.go
+index d480657..d81dd56 100644
+--- a/core/providers/openai.go
++++ b/core/providers/openai.go
+@@ -16,6 +16,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/bytedance/sonic"
++	"github.com/google/uuid"
+ 	schemas "github.com/maximhq/bifrost/core/schemas"
+ 	"github.com/maximhq/bifrost/core/schemas/providers/openai"
+ 	"github.com/valyala/fasthttp"
+@@ -1037,6 +1038,10 @@ func handleOpenAIResponsesStreaming(
+ 				continue
+ 			}
+ 
++			if response.ID == "" {
++				response.ID = uuid.NewString()
++			}
++
+ 			if response.ResponsesStreamResponse == nil {
+ 				continue
+ 			}
+@@ -1073,9 +1078,28 @@ func handleOpenAIResponsesStreaming(
+ 			response.ExtraFields.ModelRequested = request.Model
+ 			response.ExtraFields.ChunkIndex = response.ResponsesStreamResponse.SequenceNumber
+ 
+-			if sendBackRawResponse {
+-				response.ExtraFields.RawResponse = jsonData
++			if response.ResponsesStreamResponse.Response == nil {
++				response.ResponsesStreamResponse.Response = &schemas.ResponsesStreamResponseStruct{
++					ResponsesResponse: &schemas.ResponsesResponse{ID: response.ID},
++				}
++			} else if response.ResponsesStreamResponse.Response.ResponsesResponse == nil {
++				response.ResponsesStreamResponse.Response.ResponsesResponse = &schemas.ResponsesResponse{ID: response.ID}
++			} else if response.ResponsesStreamResponse.Response.ResponsesResponse.ID == "" {
++				response.ResponsesStreamResponse.Response.ResponsesResponse.ID = response.ID
++			}
++
++			if response.ResponsesStreamResponse.Response != nil {
++				response.ResponsesResponse = response.ResponsesStreamResponse.Response.ResponsesResponse
++			}
++
++			logger.Debug(fmt.Sprintf("responses stream chunk raw: type=%s chunk=%d chunkID=%s payload=%s", response.ResponsesStreamResponse.Type, response.ExtraFields.ChunkIndex, response.ID, jsonData))
++
++			patchedRaw, patched := ensureResponsesStreamIDs(jsonData, &response)
++
++			if response.ResponsesStreamResponse.Type == schemas.ResponsesStreamResponseTypeCompleted {
++				logger.Debug(fmt.Sprintf("response.completed chunk result: patched=%t id=%s chunk=%d payload=%s", patched, response.ID, response.ExtraFields.ChunkIndex, patchedRaw))
+ 			}
++			response.ExtraFields.RawResponse = patchedRaw
+ 
+ 			if response.ResponsesStreamResponse.Type == schemas.ResponsesStreamResponseTypeCompleted {
+ 				ctx = context.WithValue(ctx, schemas.BifrostContextKeyStreamEndIndicator, true)
+@@ -1854,6 +1878,74 @@ func parseStreamOpenAIError(resp *http.Response) *schemas.BifrostError {
+ 	return bifrostErr
+ }
+ 
++func ensureResponsesStreamIDs(raw string, response *schemas.BifrostResponse) (string, bool) {
++	if strings.TrimSpace(raw) == "" {
++		return raw, false
++	}
++
++	var payload map[string]any
++	if err := sonic.Unmarshal([]byte(raw), &payload); err != nil {
++		return raw, false
++	}
++
++	updated := false
++
++	if response.ID != "" {
++		if id, ok := payload["id"].(string); !ok || id == "" {
++			payload["id"] = response.ID
++			updated = true
++		}
++	}
++
++	if response.ResponsesStreamResponse != nil {
++		if eventType, ok := payload["type"].(string); !ok || eventType == "" {
++			payload["type"] = string(response.ResponsesStreamResponse.Type)
++			updated = true
++		}
++	}
++
++	var respID string
++	switch {
++	case response.ResponsesResponse != nil && response.ResponsesResponse.ID != "":
++		respID = response.ResponsesResponse.ID
++	case response.ResponsesStreamResponse != nil &&
++		response.ResponsesStreamResponse.Response != nil &&
++		response.ResponsesStreamResponse.Response.ResponsesResponse != nil &&
++		response.ResponsesStreamResponse.Response.ResponsesResponse.ID != "":
++		respID = response.ResponsesStreamResponse.Response.ResponsesResponse.ID
++	default:
++		respID = response.ID
++	}
++
++	if respID != "" {
++		if existing, ok := payload["response"]; ok {
++			if respMap, ok := existing.(map[string]any); ok && respMap != nil {
++				if id, ok := respMap["id"].(string); !ok || id == "" {
++					respMap["id"] = respID
++					payload["response"] = respMap
++					updated = true
++				}
++			} else {
++				payload["response"] = map[string]any{"id": respID}
++				updated = true
++			}
++		} else {
++			payload["response"] = map[string]any{"id": respID}
++			updated = true
++		}
++	}
++
++	if !updated {
++		return raw, false
++	}
++
++	patched, err := sonic.Marshal(payload)
++	if err != nil {
++		return raw, false
++	}
++	return string(patched), true
++}
++
+ func parseOpenAIErrorForStreamDataLine(jsonData string, requestType schemas.RequestType, providerName schemas.ModelProvider, model string) (*schemas.BifrostError, error) {
+ 	var openAIError schemas.BifrostError
+ 	if err := sonic.Unmarshal([]byte(jsonData), &openAIError); err != nil {
+diff --git a/core/schemas/mux.go b/core/schemas/mux.go
+index ec10fac..406bed2 100644
+--- a/core/schemas/mux.go
++++ b/core/schemas/mux.go
+@@ -787,6 +787,7 @@ func (br *BifrostResponse) ToResponsesOnly() {
+ 
+ 	// Create ResponsesResponse from Chat fields
+ 	br.ResponsesResponse = &ResponsesResponse{
++		ID:        br.ID,
+ 		CreatedAt: br.Created,
+ 	}
+ 
+diff --git a/core/schemas/providers/anthropic/responses.go b/core/schemas/providers/anthropic/responses.go
+index 277c131..62c6745 100644
+--- a/core/schemas/providers/anthropic/responses.go
++++ b/core/schemas/providers/anthropic/responses.go
+@@ -207,6 +207,7 @@ func (response *AnthropicMessageResponse) ToResponsesBifrostResponse() *schemas.
+ 		Model:  response.Model,
+ 		Object: "response",
+ 		ResponsesResponse: &schemas.ResponsesResponse{
++			ID:        response.ID,
+ 			CreatedAt: int(time.Now().Unix()),
+ 		},
+ 	}
+diff --git a/core/schemas/providers/bedrock/responses.go b/core/schemas/providers/bedrock/responses.go
+index f48f7bf..279d564 100644
+--- a/core/schemas/providers/bedrock/responses.go
++++ b/core/schemas/providers/bedrock/responses.go
+@@ -205,10 +205,13 @@ func (bedrockResp *BedrockConverseResponse) ToResponsesBifrostResponse() (*schem
+ 		Model:  "", // Will be set by provider
+ 		Object: "response",
+ 		ResponsesResponse: &schemas.ResponsesResponse{
++			ID:        "",
+ 			CreatedAt: int(time.Now().Unix()),
+ 		},
+ 	}
+ 
++	bifrostResp.ResponsesResponse.ID = bifrostResp.ID
++
+ 	// Convert usage information
+ 	usage := &schemas.LLMUsage{
+ 		ResponsesExtendedResponseUsage: &schemas.ResponsesExtendedResponseUsage{},
+diff --git a/core/schemas/providers/cohere/responses.go b/core/schemas/providers/cohere/responses.go
+index 3461cfe..05f2b96 100644
+--- a/core/schemas/providers/cohere/responses.go
++++ b/core/schemas/providers/cohere/responses.go
+@@ -89,6 +89,7 @@ func (cohereResp *CohereChatResponse) ToResponsesBifrostResponse() *schemas.Bifr
+ 		ID:     cohereResp.ID,
+ 		Object: "response",
+ 		ResponsesResponse: &schemas.ResponsesResponse{
++			ID:        cohereResp.ID,
+ 			CreatedAt: int(time.Now().Unix()), // Set current timestamp
+ 		},
+ 	}
+@@ -567,7 +568,7 @@ func (chunk *CohereStreamEvent) ToBifrostResponsesStream(sequenceNumber int) (*s
+ 						SequenceNumber: sequenceNumber,
+ 						ContentIndex:   chunk.Index,
+ 						OutputIndex:    schemas.Ptr(0),
+-						Delta: schemas.Ptr(toolCall.Function.Arguments),
++						Delta:          schemas.Ptr(toolCall.Function.Arguments),
+ 					},
+ 				}, nil, false
+ 			}
+diff --git a/core/schemas/providers/gemini/responses.go b/core/schemas/providers/gemini/responses.go
+index a59e445..e3b74f7 100644
+--- a/core/schemas/providers/gemini/responses.go
++++ b/core/schemas/providers/gemini/responses.go
+@@ -90,7 +90,10 @@ func (response *GenerateContentResponse) ToResponsesBifrostResponse() *schemas.B
+ 		if len(outputMessages) > 0 {
+ 			// Initialize ResponsesResponse if not already allocated
+ 			if bifrostResp.ResponsesResponse == nil {
+-				bifrostResp.ResponsesResponse = &schemas.ResponsesResponse{}
++				bifrostResp.ResponsesResponse = &schemas.ResponsesResponse{ID: bifrostResp.ID}
++			}
++			if bifrostResp.ResponsesResponse.ID == "" {
++				bifrostResp.ResponsesResponse.ID = bifrostResp.ID
+ 			}
+ 			bifrostResp.ResponsesResponse.Output = outputMessages
+ 		}
+diff --git a/core/schemas/responses.go b/core/schemas/responses.go
+index dd2377b..54f468f 100644
+--- a/core/schemas/responses.go
++++ b/core/schemas/responses.go
+@@ -83,6 +83,7 @@ type ResponsesTextConfigFormatJSONSchema struct {
+ }
+ 
+ type ResponsesResponse struct {
++	ID                 string                         `json:"id,omitempty"`
+ 	Background         *bool                          `json:"background,omitempty"`
+ 	Conversation       *ResponsesResponseConversation `json:"conversation,omitempty"`
+ 	Error              *ResponsesResponseError        `json:"error,omitempty"`
+diff --git a/framework/streaming/types.go b/framework/streaming/types.go
+index 11bfa92..b7c155b 100644
+--- a/framework/streaming/types.go
++++ b/framework/streaming/types.go
+@@ -156,6 +156,7 @@ func (p *ProcessedStreamResponse) ToBifrostResponse() *schemas.BifrostResponse {
+ 	// Handle responses output
+ 	if p.Data.OutputMessages != nil {
+ 		resp.ResponsesResponse = &schemas.ResponsesResponse{
++			ID:        resp.ID,
+ 			CreatedAt: int(p.Data.StartTimestamp.Unix()),
+ 			Output:    p.Data.OutputMessages,
+ 		}

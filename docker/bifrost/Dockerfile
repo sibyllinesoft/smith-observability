@@ -1,10 +1,30 @@
 FROM golang:1.24 AS builder
 
+ARG BIFROST_REPO="https://github.com/maximhq/bifrost.git"
+ARG BIFROST_REF="transports/v1.3.0-prerelease7"
+
 WORKDIR /src
-COPY bifrost-src/ /src/
+
+RUN git clone --depth 1 --branch "${BIFROST_REF}" "${BIFROST_REPO}" /src
+
+COPY patches/ /tmp/patches/
+
+RUN if ls /tmp/patches/*.patch >/dev/null 2>&1; then \
+      for patch in /tmp/patches/*.patch; do \
+        echo "Applying ${patch}" && git apply "${patch}"; \
+      done; \
+    fi
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    go work init ./core ./framework \
+        ./plugins/governance \
+        ./plugins/logging \
+        ./plugins/maxim \
+        ./plugins/otel \
+        ./plugins/semanticcache \
+        ./plugins/telemetry \
+        ./transports && \
     cd transports/bifrost-http && \
     rm -rf ui && \
     cp -r ../../ui ./ui && \
