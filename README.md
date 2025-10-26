@@ -1,144 +1,185 @@
 # Smith Observability Toolkit
 
-A lightweight toolkit for bootstrapping the Smith observability stack. Install
-the npm package globally and call `smith observe <agent>` from any git
-repository to start collecting traces from your favourite agent CLI.
+Smith Observability bundles a runnable Bifrost + OpenTelemetry + ClickHouse stack and a small Node.js wrapper (`smith observe`) that launches your favourite agent CLI with production-grade telemetry defaults. The goal is to make it trivial to demonstrate end‑to‑end tracing for Codex (and other CLIs) while serving as instructional material for wiring Bifrost into an OTEL pipeline.
 
-The command:
+## Table of contents
 
-- ensures the bundled Bifrost gateway plus OpenTelemetry Collector + ClickHouse stack are running,
-- wires sensible OTLP defaults for the agent process,
-- annotates spans with git metadata from the current repository, and
-- launches the agent binary while streaming its stdout/stderr.
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+  - [Stack topology](#stack-topology)
+  - [Telemetry flow](#telemetry-flow)
+  - [Captured span metadata](#captured-span-metadata)
+- [Configuration reference](#configuration-reference)
+  - [Environment variables](#environment-variables)
+  - [Bifrost configuration](#bifrost-configuration)
+- [Working with Codex](#working-with-codex)
+  - [Deterministic local stub](#deterministic-local-stub)
+  - [Inspecting ClickHouse](#inspecting-clickhouse)
+  - [Using real providers](#using-real-providers)
+- [Development workflow](#development-workflow)
+  - [Repository layout](#repository-layout)
+  - [Tests](#tests)
+- [Troubleshooting](#troubleshooting)
+- [Additional resources](#additional-resources)
 
-## Prerequisites
+## Quick start
 
-- Docker with the Compose plugin (or `docker-compose`)
-- Node.js 18+
-- An agent CLI available on your `PATH` (for example `claude`, `codex`, `smith-agent`)
+### Prerequisites
 
-## Install
+- Docker (with Compose plugin) or standalone `docker-compose`
+- Node.js 18 or newer
+- An agent CLI on your `PATH` (for example `codex`, `claude`, or `smith-agent`)
+
+### Install
 
 ```bash
 npm install -g smith-observability
 ```
 
-During development you can run `npm link` inside the cloned repository instead
-of performing a global install.
+During local development run `npm link` inside this repository to create a global symlink without publishing.
 
-## Usage
+### First trace
 
 ```bash
-smith observe <agent> [-- <agent args>]
+smith observe codex -- --model openai/gpt-5-codex exec "Call the \`list_directory\` tool on \".\""
 ```
 
-Arguments following the optional `--` delimiter are forwarded to the agent
-exactly as provided (the delimiter itself is stripped).
+The CLI ensures the observability stack is running, injects OTEL defaults, adds git metadata to the resource attributes, rewrites provider base URLs so requests flow through Bifrost, launches the agent, and streams its stdout/stderr. All spans land in ClickHouse (`otel.otel_traces`) within a few seconds.
 
-Examples:
+Provide upstream credentials via standard environment variables such as `OPENAI_API_KEY`; Bifrost passes the header through to the provider or falls back to the supplied env key when requests omit it.
 
-- `smith observe claude`
-- `smith observe smith-agent -- --config ~/.smith/config.json`
-
-Provide your model API keys through standard environment variables (for example
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). They are passed directly into the Bifrost
-gateway container so routed requests have access to the required credentials.
-When a request carries its own `Authorization: Bearer ...` header, Bifrost prefers
-that header; otherwise it falls back to the keys you supplied via environment
-variables.
-
-## Tests
-
-- `npm test` — runs the lightweight argument transformation unit tests.
-- `npm run test:e2e` — spins up the stubbed observability stack, runs `smith observe codex`, and asserts that ClickHouse captured the full response output payloads.
-
-### Codex defaults
-
-When you launch the Codex agent, the wrapper guarantees Bifrost receives a model
-identifier in `provider/model` form. If you omit `--model` and do not set
-`CODEX_DEFAULT_MODEL`, the CLI injects `openai/gpt-5-codex`. Override the default
-by exporting `CODEX_DEFAULT_MODEL` (for example,
-`CODEX_DEFAULT_MODEL=gpt-4o smith observe codex -- look around`). The effective
-model is logged before the agent starts and is recorded on the `smith.observe`
-span as `smith.agent.model`.
-
-### What happens when you call `smith observe`
-
-1. `docker compose up -d` runs against the package’s `docker-compose.yaml`. The
-   call is idempotent and only starts services that are not already running.
-2. The command waits for `http://localhost:13318` (OTLP/HTTP) to accept requests.
-3. Bifrost is probed on `http://localhost:16080/healthz` so requests can be routed
-   through the gateway once the agent launches.
-4. Default OTEL environment variables are enforced (unless you set `SMITH_OBSERVABILITY_KEEP_OTEL=1`):
-   - `OTEL_EXPORTER_OTLP_ENDPOINT=localhost:13317`
-   - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:13318/v1/traces`
-   - `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` / `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf`
-   - `OTEL_EXPORTER_OTLP_INSECURE=true`
-   - `OTEL_RESOURCE_ATTRIBUTES` gains `service.name=smith-agent-<agent>` and `smith.agent.name=<agent>`
-   - `OTEL_SERVICE_NAME` mirrors `service.name`
-5. Git metadata gathered from the current working directory (root path, current
-   branch, `remote.origin.url`, and whether the tree is dirty) is appended to
-   `OTEL_RESOURCE_ATTRIBUTES` as `smith.git.root`, `smith.git.branch`,
-   `smith.git.remote`, and `smith.git.status_dirty`.
-6. Supported CLIs (today `claude` and `codex`) have their base URLs rewritten to
-   `http://localhost:16080`, ensuring requests flow through Bifrost without
-   manual configuration.
-7. The CLI emits a parent `smith.observe` span (using the same OTLP endpoint) so
-   every agent invocation generates at least one trace enriched with git context
-   and exit status.
-8. The agent process is launched with the enriched environment. When the agent
-   exits, its exit code is propagated back to the caller.
-
-If you need to preserve your own OTEL settings, run with
-`SMITH_OBSERVABILITY_KEEP_OTEL=1 smith observe <agent>` and override only the
-variables you care about (`OTEL_RESOURCE_ATTRIBUTES` values you provide will be
-merged with the git metadata).
-
-### Stopping the stack
-
-When you are finished collecting traces:
+Stop the stack at any time:
 
 ```bash
 docker compose -p smith-observability -f "$(npm root -g)/smith-observability/docker-compose.yaml" down
 ```
 
-If you are working from a clone of the repository, you can also run the same
-command from that directory without the absolute path. Should Docker report a
-name conflict, remove any old containers (for example via `docker rm <container>`) or
-run the `down` command above before restarting `smith observe`.
+## How it works
 
-## Observability stack
+### Stack topology
 
-The compose file launches three services:
+`docker-compose.yaml` starts three services, all defined in this repository:
 
-- **bifrost** – A Bifrost gateway (running on `http://localhost:16080`) proxies agent traffic straight to the upstream provider. It honours inbound `Authorization` headers and falls back to the provided `OPENAI_API_KEY` when none is present. The container ships with Go auto-instrumentation so gateway spans and usage metadata are exported through OTLP.
-- **otel-collector** – Receives spans via OTLP on `localhost:13317` (gRPC) / `localhost:13318` (HTTP) and forwards them to ClickHouse.
-- **clickhouse** – Retains spans for historical queries (`http://localhost:13123`, native TCP on `localhost:13900`).
+| Service | Purpose | Ports |
+| ------- | ------- | ----- |
+| `bifrost` | Proxies requests from agents to upstream LLM providers and emits spans/usage metrics | `16080` (HTTP) |
+| `otel-collector` | Accepts OTLP traces over gRPC (13317) and HTTP (13318), decorates spans, and exports to ClickHouse | `13317`, `13318` |
+| `clickhouse` | Stores spans and exposes SQL endpoints for exploration | `13123` (HTTP), `13900` (native) |
 
-All configuration files live under `observability/` and ship with the npm
-package, so the CLI can operate without a local checkout. Bifrost reads
-`bifrost.config.json`; tweak this to change upstream providers, plugin options,
-or to harden logging/telemetry behavior.
+The Docker image for Bifrost is rebuilt locally on demand (`docker/bifrost/`). A Python step patches the OTEL converter so `gen_ai.responses.output_json` always contains the full message list, including tool call arguments and outputs.
 
-## Exploring traces
+### Telemetry flow
 
-- ClickHouse SQL: `docker compose -p smith-observability exec clickhouse clickhouse-client --query "SELECT count() FROM otel.otel_traces"`.
-- The OTLP endpoint (`http://localhost:13318`) remains available for additional workloads while the stack is running.
-- Bifrost exposes a lightweight dashboard on `http://localhost:16080` showing routed calls and usage counters.
-- Two helper views are created automatically in ClickHouse:
-  - `otel.agent_runs` – one row per trace with git metadata, span counts, and timing details.
-  - `otel.session_timeline` – 1-hour buckets derived from `agent_runs` for lightweight dashboards.
-  (On first launch the ClickHouse container executes `observability/clickhouse-init.sql` automatically; if you reuse an older volume, rerun the script manually with `docker compose -p smith-observability exec -T clickhouse clickhouse-client --multiquery < observability/clickhouse-init.sql`.)
+1. `smith observe` runs `docker compose ... up -d`.
+2. The wrapper waits for OTLP/HTTP (`http://localhost:13318/v1/traces`) and Bifrost (`http://localhost:16080/healthz`) to report ready.
+3. Unless `SMITH_OBSERVABILITY_KEEP_OTEL=1` is set, default OTEL environment variables are defined for the child process:
+   - `OTEL_EXPORTER_OTLP_ENDPOINT=localhost:13317`
+   - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:13318/v1/traces`
+   - `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`
+   - `OTEL_EXPORTER_OTLP_INSECURE=true`
+   - `OTEL_RESOURCE_ATTRIBUTES` gains `service.name=smith-agent-<agent>` and git metadata (`smith.git.*`)
+4. Supported CLIs (currently Codex and Claude) have their base URLs rewritten to `http://localhost:16080` so every request is recorded by Bifrost.
+5. The wrapper emits its own `smith.observe` span and launches the agent with the enriched environment.
+6. The collector batches spans and writes them into ClickHouse; helper views (`otel.agent_runs`, `otel.session_timeline`) are created during container init.
 
-## Repository layout
+### Captured span metadata
+
+Every Codex invocation routed through the stack captures:
+
+- Git metadata (`smith.git.root`, `smith.git.branch`, `smith.git.remote`, `smith.git.status_dirty`)
+- Agent arguments (`smith.agent.args`, `smith.agent.model`)
+- Request/response usage metrics (`gen_ai.usage.*`, `gen_ai.responses.*`)
+- Full response output payload (`gen_ai.responses.output_json`) including tool call arguments/results via the Bifrost converter patch
+- Raw Bifrost gateway request/response logs on disk (`/srv/bifrost/logs/openai-requests.jsonl`) when `request_logging` is enabled
+
+Refer to [`observability/clickhouse-init.sql`](observability/clickhouse-init.sql) for the exact schema and helper views.
+
+## Configuration reference
+
+### Environment variables
+
+| Variable | Description |
+| -------- | ----------- |
+| `OPENAI_API_KEY` (and other provider keys) | Passed directly into the Bifrost container. |
+| `SMITH_OBSERVABILITY_BIFROST_CONFIG` | Path (inside the host) to a Bifrost config file that should be bind-mounted into the container. Used by the e2e test to swap in the stub config. |
+| `SMITH_OBSERVABILITY_OPENAI_BASE_URL` / `SMITH_OPENAI_BASE_URL` | Overrides the provider base URL if the default `https://api.openai.com` is not reachable (for example, when pointing at a local gateway). |
+| `SMITH_OBSERVABILITY_KEEP_OTEL` | Skip injecting OTEL defaults; only git metadata is merged into existing values. |
+| `SMITH_OBSERVABILITY_SKIP_MAIN` | Internal flag used by unit tests to prevent the CLI from bootstrapping the stack. |
+| `CODEX_DEFAULT_MODEL` | Default Codex model (in `provider/model` form) when the user does not supply `--model`. |
+
+### Bifrost configuration
+
+- [`bifrost.config.json`](bifrost.config.json) ships with sane defaults for the OpenAI provider, JSON logging, and OTEL + telemetry plugins.
+- The Dockerfile (`docker/bifrost/Dockerfile`) builds Bifrost from source and applies a Go patch so streaming responses always carry IDs and serialize full `responses` payloads into OTEL span attributes.
+- Test runs mount [`test/support/bifrost-stub.config.json`](test/support/bifrost-stub.config.json) so the gateway points at the bundled SSE stub while exercising the same instrumentation.
+
+Customise these files (or provide your own via `SMITH_OBSERVABILITY_BIFROST_CONFIG`) to add providers, change logging destinations, or extend telemetry labels.
+
+## Working with Codex
+
+### Deterministic local stub
+
+The repository includes a streaming OpenAI-compatible stub (`test/support/openai-stub.mjs`). The new end-to-end test boots the `openai-stub` Compose profile, runs `smith observe codex`, and asserts that ClickHouse contains the tool call arguments and outputs. Run it manually:
+
+```bash
+npm run test:e2e
+```
+
+The test logs each ClickHouse query and result to stdout for quick sanity checks while the agent runs.
+
+### Inspecting ClickHouse
+
+After running the CLI (or the e2e test), inspect the stored spans:
+
+```bash
+docker compose -p smith-observability exec -T clickhouse clickhouse-client \
+  --query "SELECT SpanAttributes['gen_ai.responses.output_json'] FROM otel.otel_traces WHERE SpanName='gen_ai.responses' ORDER BY Timestamp DESC LIMIT 1 FORMAT TSVRaw"
+```
+
+You should see the full response payload, including the `function_call` and `function_call_output` entries emitted by the stub (or real provider).
+
+### Using real providers
+
+Set `OPENAI_API_KEY` (and optional `SMITH_OBSERVABILITY_OPENAI_BASE_URL`) before launching Codex. When running against the hosted API, disable the stub:
+
+```bash
+OPENAI_API_KEY=sk-... smith observe codex -- --model openai/gpt-4o-mini exec "Generate a release checklist"
+```
+
+Traces still land in ClickHouse; only the upstream traffic shifts from the stub to the real endpoint.
+
+For a guided walkthrough that starts from an empty project and inspects the resulting spans, see [docs/codex-observability-guide.md](docs/codex-observability-guide.md).
+
+## Development workflow
+
+### Repository layout
 
 ```
-bin/smith.mjs           CLI entrypoint
-docker-compose.yaml     Observability services
-docker/bifrost/         Bifrost container image and entrypoint
-bifrost.config.json     Bifrost gateway configuration
-observability/          Collector and ClickHouse configs
-README.md               This guide
+bin/smith.mjs           CLI entrypoint and orchestration logic
+docker-compose.yaml     Compose stack for Bifrost + OTEL + ClickHouse
+docker/bifrost/         Docker image build + patches for the Bifrost gateway
+observability/          Collector and ClickHouse configuration
+test/                   Unit tests, e2e harness, stub configs
 ```
 
-Feel free to fork and adapt the compose file or configs for your own agents.
+### Tests
+
+- `npm test` &mdash; unit tests for the CLI argument transformations (fast, no Docker required).
+- `npm run test:e2e` &mdash; boots the Docker stack, runs `smith observe codex`, prints the ClickHouse queries it issues, and validates that `gen_ai.responses.output_json` contains the full tool call transcript.
+
+The e2e test is a release gate: it exercises the full stack, verifies tool call telemetry, and confirms the Bifrost patches continue to function.
+
+## Troubleshooting
+
+- **Docker conflicts:** If you see compose name conflicts, run `docker compose -p smith-observability down -v` to stop the stack and drop volumes.
+- **Collector not ready:** Ensure nothing else is binding `13317`/`13318`. The CLI waits ~60 seconds before giving up.
+- **Missing spans:** Run `docker compose -p smith-observability logs bifrost` to confirm requests are flowing. The `openai-requests.jsonl` file inside `/srv/bifrost/logs/` contains raw proxied traffic.
+- **Custom OTEL settings:** Export `SMITH_OBSERVABILITY_KEEP_OTEL=1` and set your own `OTEL_EXPORTER_OTLP_*` values. The CLI merges git metadata automatically.
+- **ClickHouse schema drift:** If you reuse persistent volumes created before this release, reapply `observability/clickhouse-init.sql` to add the helper views.
+
+## Additional resources
+
+- [docs/codex-observability-guide.md](docs/codex-observability-guide.md) &mdash; step-by-step walkthrough for capturing Codex traces with the included stub.
+- [docs/release-checklist.md](docs/release-checklist.md) &mdash; tasks to run before publishing a new package version.
+- `observability/` directory for collector + ClickHouse configuration examples you can adapt to other projects.
+- The Bifrost patches in `docker/bifrost/Dockerfile` illustrate how to extend upstream gateways when you need richer OTEL attributes.
