@@ -1,18 +1,44 @@
 services:
+  openai-stub:
+    profiles: ["test"]
+    image: node:20-slim
+    working_dir: /app
+    environment:
+      OPENAI_STUB_PORT: 8080
+    command:
+      - node
+      - /app/openai-stub.mjs
+    volumes:
+      - ./test/support/openai-stub.mjs:/app/openai-stub.mjs:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
   bifrost:
     build:
       context: ./docker/bifrost
     ports:
       - "16080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       BIFROST_HOST: 0.0.0.0
       BIFROST_PORT: 8080
       BIFROST_LOG_LEVEL: debug
       BIFROST_LOG_STYLE: json
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
     volumes:
       - bifrost_data:/srv/bifrost
-      - ./bifrost.config.json:/etc/bifrost/config.json:ro
+      - ${SMITH_OBSERVABILITY_BIFROST_CONFIG:-./bifrost.config.json}:/etc/bifrost/config.json:ro
     depends_on:
       otel-collector:
         condition: service_started

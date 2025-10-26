@@ -93,6 +93,7 @@ variables, and launches the specified agent binary.
 async function ensureObservabilityStack(packageRoot) {
   const composeFile = path.join(packageRoot, 'docker-compose.yaml');
   const dockerCmd = resolveDockerComposeCommand();
+  const composeEnv = buildComposeEnvironment();
 
   console.log('[smith] Ensuring observability stack is running…');
   const args = [
@@ -107,7 +108,7 @@ async function ensureObservabilityStack(packageRoot) {
   ];
 
   try {
-    await runCommand(dockerCmd.command, args);
+    await runCommand(dockerCmd.command, args, { env: composeEnv });
   } catch (error) {
     if (error?.message?.includes('Conflict')) {
       console.error(
@@ -120,7 +121,17 @@ async function ensureObservabilityStack(packageRoot) {
   }
 
   await waitForCollector();
-  await ensureClickhouseSchema(dockerCmd, composeFile);
+  await ensureClickhouseSchema(dockerCmd, composeFile, composeEnv);
+}
+
+function buildComposeEnvironment() {
+  const env = { ...process.env };
+  const overrideBase =
+    env.SMITH_OBSERVABILITY_OPENAI_BASE_URL ?? env.SMITH_OPENAI_BASE_URL;
+  if (overrideBase && !env.OPENAI_BASE_URL) {
+    env.OPENAI_BASE_URL = overrideBase;
+  }
+  return env;
 }
 
 async function waitForCollector() {
@@ -153,7 +164,7 @@ async function waitForCollector() {
   console.warn('[smith] Timed out waiting for the OTEL collector to respond on port 13318.');
 }
 
-async function ensureClickhouseSchema(dockerCmd, composeFile) {
+async function ensureClickhouseSchema(dockerCmd, composeFile, composeEnv) {
   const args = [
     ...dockerCmd.args,
     '-f',
@@ -169,7 +180,7 @@ async function ensureClickhouseSchema(dockerCmd, composeFile) {
   ];
 
   try {
-    await runCommand(dockerCmd.command, args);
+    await runCommand(dockerCmd.command, args, { env: composeEnv });
   } catch (error) {
     console.warn('[smith] Failed to refresh ClickHouse schema:', error?.message ?? error);
   }

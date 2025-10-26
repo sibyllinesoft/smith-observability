@@ -15,6 +15,67 @@ RUN if ls /tmp/patches/*.patch >/dev/null 2>&1; then \
       done; \
     fi
 
+RUN python3 - <<'PY'
+from pathlib import Path
+path = Path('/src/plugins/otel/converter.go')
+text = path.read_text()
+
+if 'github.com/bytedance/sonic' not in text:
+    text = text.replace(
+        '\t"github.com/maximhq/bifrost/core/schemas"\n',
+        '\t"github.com/bytedance/sonic"\n\t"github.com/maximhq/bifrost/core/schemas"\n',
+        1,
+    )
+
+text = text.replace('case "response":', 'case "response", "responses":')
+
+marker = '\t\t\tparams = append(params, kvAny("gen_ai.responses.output_messages", arrValue(outputMessages...)))\n'
+addition = (
+    '\t\t\tvar outputPayload any\n'
+    '\t\t\tif resp != nil {\n'
+    '\t\t\t\tvar rawPayload map[string]any\n'
+    '\t\t\t\tswitch raw := resp.ExtraFields.RawResponse.(type) {\n'
+    '\t\t\t\tcase string:\n'
+    '\t\t\t\t\tif strings.TrimSpace(raw) != "" {\n'
+    '\t\t\t\t\t\tif err := sonic.Unmarshal([]byte(raw), &rawPayload); err != nil {\n'
+    '\t\t\t\t\t\t\trawPayload = nil\n'
+    '\t\t\t\t\t\t}\n'
+    '\t\t\t\t\t}\n'
+    '\t\t\t\tcase []byte:\n'
+    '\t\t\t\t\tif len(raw) > 0 {\n'
+    '\t\t\t\t\t\tif err := sonic.Unmarshal(raw, &rawPayload); err != nil {\n'
+    '\t\t\t\t\t\t\trawPayload = nil\n'
+    '\t\t\t\t\t\t}\n'
+    '\t\t\t\t\t}\n'
+    '\t\t\t\tcase map[string]any:\n'
+    '\t\t\t\t\trawPayload = raw\n'
+    '\t\t\t\t}\n'
+    '\t\t\t\tif rawPayload != nil {\n'
+    '\t\t\t\t\tif responseBody, ok := rawPayload["response"].(map[string]any); ok {\n'
+    '\t\t\t\t\t\tif responsesOutput, ok := responseBody["responses"]; ok && responsesOutput != nil {\n'
+    '\t\t\t\t\t\t\toutputPayload = responsesOutput\n'
+    '\t\t\t\t\t\t} else if responsesOutput, ok := responseBody["output"]; ok && responsesOutput != nil {\n'
+    '\t\t\t\t\t\t\toutputPayload = responsesOutput\n'
+    '\t\t\t\t\t\t}\n'
+    '\t\t\t\t\t}\n'
+    '\t\t\t\t}\n'
+    '\t\t\t}\n'
+    '\t\t\tif outputPayload == nil && resp != nil && resp.ResponsesResponse != nil {\n'
+    '\t\t\t\toutputPayload = resp.ResponsesResponse.Output\n'
+    '\t\t\t}\n'
+    '\t\t\tif outputPayload != nil {\n'
+    '\t\t\t\tif rawOutput, err := sonic.Marshal(outputPayload); err == nil {\n'
+    '\t\t\t\t\tparams = append(params, kvStr("gen_ai.responses.output_json", string(rawOutput)))\n'
+    '\t\t\t\t}\n'
+    '\t\t\t}\n'
+)
+if addition.strip() not in text and marker in text:
+    text = text.replace(marker, marker + addition, 1)
+
+path.write_text(text)
+PY
+
+
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go work init ./core ./framework \

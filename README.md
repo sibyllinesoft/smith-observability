@@ -47,6 +47,11 @@ When a request carries its own `Authorization: Bearer ...` header, Bifrost prefe
 that header; otherwise it falls back to the keys you supplied via environment
 variables.
 
+## Tests
+
+- `npm test` — runs the lightweight argument transformation unit tests.
+- `npm run test:e2e` — spins up the stubbed observability stack, runs `smith observe codex`, and asserts that ClickHouse captured the full response output payloads.
+
 ### Codex defaults
 
 When you launch the Codex agent, the wrapper guarantees Bifrost receives a model

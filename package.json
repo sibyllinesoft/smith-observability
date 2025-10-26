@@ -15,7 +15,9 @@
     "docker"
   ],
   "scripts": {
-    "observe": "node ./bin/smith.mjs observe"
+    "observe": "node ./bin/smith.mjs observe",
+    "test": "node --test test/codex-args.test.mjs",
+    "test:e2e": "node --test test/codex-observe-e2e.test.mjs"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

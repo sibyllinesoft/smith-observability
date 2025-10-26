@@ -13,7 +13,7 @@
   "providers": {
     "openai": {
       "network_config": {
-        "base_url": "https://api.openai.com"
+        "base_url": "http://openai-stub:8080"
       },
       "keys": [
         {
